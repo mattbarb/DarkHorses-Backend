@@ -433,29 +433,59 @@ class HistoricalOddsClient:
                 # Update existing record
                 logger.debug(f"  📝 Updating existing record for {mapped_record['horse_name']}")
                 mapped_record['updated_at'] = datetime.now().isoformat()
-                response = self.client.table(self.table_name).update(
-                    mapped_record
-                ).eq('racing_bet_data_id', existing_id).execute()
 
-                if response.data:
-                    self.stats['updated'] += 1
-                    self.stats['total_processed'] += 1
-                    return True
-                else:
-                    logger.error(f"  ❌ Update failed for {mapped_record['horse_name']}")
+                try:
+                    response = self.client.table(self.table_name).update(
+                        mapped_record
+                    ).eq('racing_bet_data_id', existing_id).execute()
+
+                    # Log the actual response for debugging
+                    logger.info(f"  📥 UPDATE Response for {mapped_record['horse_name']}:")
+                    logger.info(f"     Status: {response.status_code if hasattr(response, 'status_code') else 'N/A'}")
+                    logger.info(f"     Data: {response.data if response.data else 'EMPTY'}")
+
+                    if response.data:
+                        self.stats['updated'] += 1
+                        self.stats['total_processed'] += 1
+                        return True
+                    else:
+                        logger.error(f"  ❌ Update returned no data for {mapped_record['horse_name']}")
+                        logger.error(f"     Full response: {response}")
+                        self.stats['errors'] += 1
+                        return False
+                except Exception as e:
+                    logger.error(f"  ❌ Exception during update: {e}")
+                    logger.error(f"     Error type: {type(e).__name__}")
+                    import traceback
+                    logger.error(f"     Traceback: {traceback.format_exc()}")
                     self.stats['errors'] += 1
                     return False
             else:
                 # Insert new record
                 logger.debug(f"  ➕ Inserting new record for {mapped_record['horse_name']}")
-                response = self.client.table(self.table_name).insert(mapped_record).execute()
 
-                if response.data:
-                    self.stats['inserted'] += 1
-                    self.stats['total_processed'] += 1
-                    return True
-                else:
-                    logger.error(f"  ❌ Insert failed for {mapped_record['horse_name']}")
+                try:
+                    response = self.client.table(self.table_name).insert(mapped_record).execute()
+
+                    # Log the actual response for debugging
+                    logger.info(f"  📥 INSERT Response for {mapped_record['horse_name']}:")
+                    logger.info(f"     Status: {response.status_code if hasattr(response, 'status_code') else 'N/A'}")
+                    logger.info(f"     Data: {response.data if response.data else 'EMPTY'}")
+
+                    if response.data:
+                        self.stats['inserted'] += 1
+                        self.stats['total_processed'] += 1
+                        return True
+                    else:
+                        logger.error(f"  ❌ Insert returned no data for {mapped_record['horse_name']}")
+                        logger.error(f"     Full response: {response}")
+                        self.stats['errors'] += 1
+                        return False
+                except Exception as e:
+                    logger.error(f"  ❌ Exception during insert: {e}")
+                    logger.error(f"     Error type: {type(e).__name__}")
+                    import traceback
+                    logger.error(f"     Traceback: {traceback.format_exc()}")
                     self.stats['errors'] += 1
                     return False
 
