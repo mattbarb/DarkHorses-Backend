@@ -178,25 +178,33 @@ class LiveOddsScheduler:
         all_odds_records = []
         bookmakers_seen = set()
 
+        logger.info(f"🔍 Starting to process {len(races)} races...")
+
         try:
-            for race in races:
+            for race_idx, race in enumerate(races, 1):
                 race_id = race.get('race_id')
                 if not race_id:
+                    logger.debug(f"  [{race_idx}/{len(races)}] Skipping race - no race_id")
                     continue
 
                 # Get runners for this race
                 runners = race.get('runners', [])
+                logger.info(f"  [{race_idx}/{len(races)}] Processing {race.get('course')} {race.get('off_time')} - {len(runners)} runners")
 
                 for runner in runners:
                     horse_id = runner.get('horse_id')
+                    horse_name = runner.get('horse', 'Unknown')
                     if not horse_id:
+                        logger.debug(f"    ⚠️  Skipping {horse_name} - no horse_id")
                         continue
 
                     try:
                         # Fetch odds for this horse/race combination (returns list of OddsData objects)
+                        logger.debug(f"    📡 Fetching odds for {horse_name} ({horse_id})...")
                         odds_list = self.fetcher.fetch_live_odds(race_id, horse_id)
 
                         if odds_list:
+                            logger.debug(f"    ✅ Got {len(odds_list)} odds for {horse_name}")
                             # Convert OddsData objects to dict records for database
                             for odds in odds_list:
                                 record = {
@@ -241,9 +249,13 @@ class LiveOddsScheduler:
                                 bookmakers_seen.add(odds.bookmaker_name)
 
                             stats['horses_processed'] += 1
+                        else:
+                            logger.debug(f"    ⚠️  No odds returned for {horse_name}")
 
                     except Exception as e:
-                        logger.error(f"Error processing {race_id}/{horse_id}: {e}")
+                        logger.error(f"    ❌ Error processing {horse_name} ({race_id}/{horse_id}): {e}")
+                        import traceback
+                        logger.error(f"    Traceback: {traceback.format_exc()}")
                         stats['errors'] += 1
 
                 stats['races_processed'] += 1
@@ -260,16 +272,30 @@ class LiveOddsScheduler:
                         bookmakers_active=list(bookmakers_seen)
                     )
 
+            # Log processing summary
+            logger.info(f"")
+            logger.info(f"📊 PROCESSING SUMMARY:")
+            logger.info(f"   Races processed: {stats['races_processed']}/{len(races)}")
+            logger.info(f"   Horses processed: {stats['horses_processed']}")
+            logger.info(f"   Odds records collected: {len(all_odds_records)}")
+            logger.info(f"   Unique bookmakers: {len(bookmakers_seen)} - {bookmakers_seen}")
+            logger.info(f"   Errors: {stats['errors']}")
+            logger.info(f"")
+
             # Store all odds in database in one batch
             if all_odds_records:
-                logger.info(f"📊 Collected {len(all_odds_records)} odds records, now storing to ra_odds_live...")
+                logger.info(f"💾 Storing {len(all_odds_records)} odds records to ra_odds_live...")
                 db_stats = self.client.update_live_odds(all_odds_records)
                 logger.info(f"✅ Database update complete: {db_stats}")
 
                 if MONITOR_ENABLED:
                     add_activity(f"Stored {len(all_odds_records)} odds to ra_odds_live (updated: {db_stats.get('updated', 0)})")
             else:
-                logger.warning("⚠️  No odds records collected to store in database")
+                logger.warning("⚠️  NO ODDS RECORDS COLLECTED - Nothing to store in database!")
+                logger.warning("⚠️  This likely means:")
+                logger.warning("     1. Racing API returned no odds data for these races")
+                logger.warning("     2. All odds fetch attempts failed (check errors above)")
+                logger.warning("     3. Races may have already finished or not started yet")
 
             return stats
 
