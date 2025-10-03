@@ -256,12 +256,47 @@ class LiveOddsFetcher:
                             odds_list.append(odds)
                             self.stats['bookmakers_found'].add(bookmaker_info['id'])
 
-        # Also check for 'odds' key (some APIs use this)
+        # Also check for 'odds' key (Racing API format)
         if 'odds' in data:
             odds_data = data['odds']
-            logger.debug(f"   📊 'odds' key found. Type: {type(odds_data)}, Value: {odds_data}")
-            # Parse embedded bookmaker odds
-            if isinstance(odds_data, dict):
+            logger.debug(f"   📊 'odds' key found. Type: {type(odds_data)}")
+
+            # Handle array format (Racing API live odds)
+            if isinstance(odds_data, list):
+                logger.info(f"   📋 Processing {len(odds_data)} bookmakers from odds array")
+                for bookmaker_odds in odds_data:
+                    if not isinstance(bookmaker_odds, dict):
+                        continue
+
+                    bookmaker_name = bookmaker_odds.get('bookmaker', '').lower()
+                    # Map bookmaker name to our internal format
+                    bookmaker_key = bookmaker_name.replace(' ', '').replace('sports', '').replace('bet', '')
+                    bookmaker_info = BOOKMAKER_MAPPING.get(bookmaker_key.lower())
+
+                    # If not found, try the original name
+                    if not bookmaker_info:
+                        bookmaker_info = BOOKMAKER_MAPPING.get(bookmaker_name)
+
+                    if bookmaker_info:
+                        # Create OddsData object
+                        odds = OddsData(
+                            race_id=race_id,
+                            horse_id=horse_id,
+                            bookmaker_id=bookmaker_info['id'],
+                            bookmaker_name=bookmaker_info['display_name'],
+                            bookmaker_type=bookmaker_info['type'],
+                            odds_decimal=float(bookmaker_odds.get('decimal', 0)) if bookmaker_odds.get('decimal') else None,
+                            odds_fractional=bookmaker_odds.get('fractional'),
+                            odds_timestamp=timestamp
+                        )
+                        odds_list.append(odds)
+                        self.stats['bookmakers_found'].add(bookmaker_info['id'])
+                        logger.debug(f"   ✅ Added {bookmaker_info['display_name']}: {odds.odds_decimal}")
+                    else:
+                        logger.debug(f"   ⚠️  Unknown bookmaker: {bookmaker_name}")
+
+            # Handle dict format (legacy/other APIs)
+            elif isinstance(odds_data, dict):
                 logger.debug(f"   🔑 Keys in odds dict: {list(odds_data.keys())}")
                 for key, value in odds_data.items():
                     logger.debug(f"   🔍 Processing odds key '{key}': {value}")
