@@ -163,7 +163,7 @@ class HistoricalOddsScheduler:
             logger.info(f"Fetching odds for yesterday: {date_str}")
 
             # Fetch results for yesterday
-            races = self.fetcher.get_completed_races(date_str, regions=['gb', 'ire'])
+            races = self.fetcher.fetch_complete_date_data(date_str, regions=['gb', 'ire'])
 
             if not races:
                 logger.info(f"No races found for {date_str}")
@@ -295,7 +295,7 @@ class HistoricalOddsScheduler:
                         )
 
                     # Fetch races for this date
-                    races = self.fetcher.get_completed_races(process_date, regions=['gb', 'ire'])
+                    races = self.fetcher.fetch_complete_date_data(process_date, regions=['gb', 'ire'])
 
                     if not races:
                         logger.info(f"  No races found for {process_date}")
