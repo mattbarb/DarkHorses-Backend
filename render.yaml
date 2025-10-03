@@ -1,0 +1,52 @@
+services:
+  # Historical Odds Service - Backfills from 2015 + Daily Updates
+  - type: worker
+    name: historical-odds-service
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 historical_odds/cron_historical.py
+    envVars:
+      - key: RACING_API_USERNAME
+        sync: false
+      - key: RACING_API_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+      - key: BACKFILL_START_YEAR
+        value: 2015
+      - key: PYTHONUNBUFFERED
+        value: 1
+      - key: PYTHONDONTWRITEBYTECODE
+        value: 1
+
+  # Live Odds Service - Real-time odds with smart scheduling
+  - type: worker
+    name: live-odds-service
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 live_odds/cron_live.py
+    envVars:
+      - key: RACING_API_USERNAME
+        sync: false
+      - key: RACING_API_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PORT
+        value: 8080
+      - key: PYTHONUNBUFFERED
+        value: 1
+      - key: PYTHONDONTWRITEBYTECODE
+        value: 1
