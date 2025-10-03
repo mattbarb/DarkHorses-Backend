@@ -1,87 +1,36 @@
 #!/usr/bin/env python3
 """
-Schema Mapping for Racing API to rb_odds_historical Table
+Schema Mapping for Racing API Combined Data to rb_odds_historical Table
 
-Maps Racing API data structure to the existing rb_odds_historical table schema.
-The existing table is Betfair-focused with columns like betfair_sp, industry_sp, etc.
-We need to map Racing API bookmaker odds appropriately.
+Maps combined Racing API data (racecards + results) to rb_odds_historical table schema.
+Extracts real pre-race odds from bookmaker array and calculates derived fields.
 
-Key Mapping Decisions:
-1. Racing API provides odds from multiple bookmakers
-2. We'll store individual bookmaker odds in relevant columns
-3. Use 'industry_sp' for bookmaker odds (as it represents industry pricing)
-4. Track data source to distinguish Racing API from Betfair data
-5. Match records by: date_of_race + track + race_time + horse_name
-6. Map course names to course_ids from ra_courses table
+Key Features:
+1. Extracts min/max odds from real bookmaker odds array
+2. Calculates SP-based returns (win, each-way, place)
+3. Derives market position and favorite rankings
+4. Uses ACTUAL pre-race odds instead of estimates
 """
 
 from typing import Dict, Optional, List
 from datetime import datetime
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 
 class SchemaMapper:
-    """Maps Racing API data to rb_odds_historical table schema"""
+    """Maps Racing API combined data to rb_odds_historical table schema"""
 
-    # Column mapping from Racing API to rb_odds_historical
-    COLUMN_MAPPING = {
-        # Primary identification fields
-        'race_date': 'date_of_race',
-        'course': 'track',
-        'off_time': 'race_time',
-        'horse_name': 'horse_name',
-
-        # Race metadata
-        'race_class': 'race_class',
-        'race_type': 'race_type',
-        'distance': 'distance',
-        'going': 'going',
-
-        # Horse/Participant data
-        'jockey': 'jockey',
-        'trainer': 'trainer',
-        'age': 'age',
-        'weight': 'weight',
-        'draw': 'stall_number',
-
-        # Result data
-        'position': 'finishing_position',
-        'distance_behind': 'winning_distance',
-        'sp': 'industry_sp',  # Starting price from Racing API
-        'sp_decimal': 'industry_sp',  # Use decimal format
-
-        # Bookmaker odds - map to industry_sp
-        'odds_decimal': 'industry_sp',  # Primary mapping for bookmaker odds
-    }
-
-    # Fields that exist in Racing API but not in rb_odds_historical
-    # We'll store these in metadata or skip them
-    UNMAPPED_FIELDS = [
-        'race_id',        # Racing API identifier (not in existing table)
-        'horse_id',       # Racing API identifier (not in existing table)
-        'bookmaker_id',   # We'll use this to identify source
-        'bookmaker_name', # We'll store in data_source
-        'off_dt',         # Full datetime (we use race_time)
-        'race_name',      # Not in existing schema
-        'jockey_id',      # IDs not in existing schema
-        'trainer_id',
-        'form',           # Not in existing schema
-        'odds_fractional', # We use decimal
-        'prize_money',    # Not in existing schema
-        'num_runners',    # Available as runners_count
-        'distance_f',     # Distance in furlongs (we have distance)
-        'official_result' # We have finishing_position
-    ]
-
-    # Required fields in rb_odds_historical that must have values
-    # In the new clean table, only racing_bet_data_id, created_at, updated_at are NOT NULL
-    # But for data quality, we require these essential fields
-    REQUIRED_FIELDS = {
-        'date_of_race',
-        'track',
-        'horse_name'
+    # Irish courses for country inference
+    IRISH_COURSES = {
+        'LEOPARDSTOWN', 'CURRAGH', 'FAIRYHOUSE', 'PUNCHESTOWN',
+        'GALWAY', 'LISTOWEL', 'NAAS', 'CORK', 'TIPPERARY',
+        'KILLARNEY', 'DOWNPATRICK', 'DUNDALK', 'GOWRAN PARK',
+        'KILBEGGAN', 'ROSCOMMON', 'SLIGO', 'TRAMORE', 'WEXFORD',
+        'CLONMEL', 'THURLES', 'BALLINROBE', 'BELLEWSTOWN',
+        'LAYTOWN'
     }
 
     def __init__(self):
@@ -92,134 +41,396 @@ class SchemaMapper:
             'errors': 0
         }
 
-    def map_racing_api_to_rb_odds(self, racing_api_record: Dict) -> Optional[Dict]:
+    def extract_odds_minmax(self, pre_race_odds: List[Dict]) -> Dict[str, Optional[float]]:
         """
-        Map a single Racing API record to rb_odds_historical schema
+        Extract min and max odds from bookmaker odds array
 
         Args:
-            racing_api_record: Record from Racing API with bookmaker odds
+            pre_race_odds: Array of bookmaker odds from racecard
+
+        Returns:
+            Dictionary with min and max odds
+        """
+        if not pre_race_odds:
+            return {'min': None, 'max': None}
+
+        valid_odds = []
+        for bookmaker_odds in pre_race_odds:
+            decimal_str = bookmaker_odds.get('decimal')
+            # Skip withdrawn/unavailable odds (marked as '-')
+            if decimal_str and decimal_str != '-':
+                try:
+                    decimal_val = float(decimal_str)
+                    if decimal_val > 1.0:  # Valid odds must be > 1.0
+                        valid_odds.append(decimal_val)
+                except (ValueError, TypeError):
+                    continue
+
+        if not valid_odds:
+            return {'min': None, 'max': None}
+
+        return {
+            'min': min(valid_odds),
+            'max': max(valid_odds)
+        }
+
+    def calculate_forecasted_odds(self, pre_race_odds: List[Dict]) -> Optional[float]:
+        """
+        Calculate forecasted odds as the average of all bookmaker odds
+
+        Args:
+            pre_race_odds: Array of bookmaker odds from racecard
+
+        Returns:
+            Average odds or None
+        """
+        if not pre_race_odds:
+            return None
+
+        valid_odds = []
+        for bookmaker_odds in pre_race_odds:
+            decimal_str = bookmaker_odds.get('decimal')
+            # Skip withdrawn/unavailable odds (marked as '-')
+            if decimal_str and decimal_str != '-':
+                try:
+                    decimal_val = float(decimal_str)
+                    if decimal_val > 1.0:
+                        valid_odds.append(decimal_val)
+                except (ValueError, TypeError):
+                    continue
+
+        if not valid_odds:
+            return None
+
+        return sum(valid_odds) / len(valid_odds)
+
+    def parse_race_class(self, class_str: Optional[str]) -> Optional[int]:
+        """
+        Parse race class from API format to integer
+
+        Args:
+            class_str: Class string like "class_1", "class_6", "Class 3", etc.
+
+        Returns:
+            Integer class (1-7) or None
+        """
+        if not class_str:
+            return None
+
+        # Handle "class_1" format
+        if isinstance(class_str, str):
+            # Try to extract number from string
+            match = re.search(r'\d+', class_str)
+            if match:
+                return int(match.group())
+
+        return None
+
+    def calculate_sp_favorite_position(self, all_runners: List[Dict], current_sp_dec: Optional[str]) -> Optional[int]:
+        """
+        Calculate favorite position based on SP
+
+        Args:
+            all_runners: List of all runners in race with their SP
+            current_sp_dec: Current runner's SP decimal
+
+        Returns:
+            Favorite position (1 = favorite, 2 = second favorite, etc.)
+        """
+        if not current_sp_dec or not all_runners:
+            return None
+
+        try:
+            current_sp = float(current_sp_dec)
+
+            # Get all valid SPs
+            sps = []
+            for runner in all_runners:
+                sp_dec = runner.get('sp_dec')
+                if sp_dec:
+                    try:
+                        sps.append(float(sp_dec))
+                    except (ValueError, TypeError):
+                        pass
+
+            if not sps:
+                return None
+
+            # Sort SPs (lowest = favorite)
+            sorted_sps = sorted(set(sps))
+
+            # Find position
+            for idx, sp in enumerate(sorted_sps, 1):
+                if current_sp == sp:
+                    return idx
+
+            return None
+
+        except (ValueError, TypeError):
+            return None
+
+    def calculate_sp_win_return(self, sp_dec: Optional[str], position: Optional[str]) -> Optional[float]:
+        """
+        Calculate win return from SP
+
+        Args:
+            sp_dec: Starting Price in decimal format
+            position: Finishing position
+
+        Returns:
+            Win return (profit per £1 stake, or 0 if lost)
+        """
+        if not sp_dec or not position:
+            return None
+
+        try:
+            sp = float(sp_dec)
+
+            # Check if won (position = "1")
+            if str(position).strip() == "1":
+                return sp  # Return includes stake
+            else:
+                return 0.0  # Lost - no return
+
+        except (ValueError, TypeError):
+            return None
+
+    def calculate_ew_return(self, sp_dec: Optional[str], position: Optional[str],
+                           runners_count: int = 0) -> Optional[float]:
+        """
+        Calculate each-way return based on SP and position
+
+        Each-way rules (typical):
+        - 5-7 runners: 1/4 odds, 2 places
+        - 8-11 runners: 1/5 odds, 3 places
+        - 12-15 runners: 1/4 odds, 3 places
+        - 16+ runners: 1/4 odds, 4 places
+
+        Args:
+            sp_dec: Starting Price in decimal format
+            position: Finishing position
+            runners_count: Number of runners in race
+
+        Returns:
+            Each-way return or None
+        """
+        if not sp_dec or not position:
+            return None
+
+        try:
+            sp = float(sp_dec)
+            pos = int(position) if str(position).isdigit() else None
+
+            if pos is None:
+                return None
+
+            # Determine place terms based on runners
+            if runners_count >= 16:
+                place_fraction = 0.25  # 1/4 odds
+                place_positions = 4
+            elif runners_count >= 12:
+                place_fraction = 0.25
+                place_positions = 3
+            elif runners_count >= 8:
+                place_fraction = 0.2  # 1/5 odds
+                place_positions = 3
+            elif runners_count >= 5:
+                place_fraction = 0.25
+                place_positions = 2
+            else:
+                return None  # No each-way betting
+
+            # Calculate return
+            if pos == 1:
+                # Won: full win return + place return
+                win_return = sp
+                place_return = 1 + ((sp - 1) * place_fraction)
+                return win_return + place_return  # Total EW return
+            elif pos <= place_positions:
+                # Placed: place return only
+                place_return = 1 + ((sp - 1) * place_fraction)
+                return place_return
+            else:
+                # Lost both
+                return 0.0
+
+        except (ValueError, TypeError):
+            return None
+
+    def calculate_place_return(self, sp_dec: Optional[str], position: Optional[str],
+                              runners_count: int = 0) -> Optional[float]:
+        """
+        Calculate place-only return
+
+        Args:
+            sp_dec: Starting Price in decimal format
+            position: Finishing position
+            runners_count: Number of runners in race
+
+        Returns:
+            Place return or None
+        """
+        if not sp_dec or not position:
+            return None
+
+        try:
+            sp = float(sp_dec)
+            pos = int(position) if str(position).isdigit() else None
+
+            if pos is None:
+                return None
+
+            # Determine place positions
+            if runners_count >= 16:
+                place_fraction = 0.25
+                place_positions = 4
+            elif runners_count >= 12:
+                place_fraction = 0.25
+                place_positions = 3
+            elif runners_count >= 8:
+                place_fraction = 0.2
+                place_positions = 3
+            elif runners_count >= 5:
+                place_fraction = 0.25
+                place_positions = 2
+            else:
+                return None
+
+            # Calculate return
+            if pos <= place_positions:
+                return 1 + ((sp - 1) * place_fraction)
+            else:
+                return 0.0
+
+        except (ValueError, TypeError):
+            return None
+
+    def map_combined_to_rb_odds(self, combined_data: Dict, all_runners: List[Dict] = None) -> Optional[Dict]:
+        """
+        Map a combined data record (racecards + results) to rb_odds_historical schema
+
+        Args:
+            combined_data: Combined data from historical_odds_fetcher (racecards + results joined)
+            all_runners: All runners in the race (for calculating favorite position)
 
         Returns:
             Mapped record ready for insertion, or None if mapping fails
         """
         try:
-            mapped = {}
+            # Parse race class
+            race_class = self.parse_race_class(combined_data.get('race_class'))
 
-            # Map basic fields using column mapping
-            for api_field, db_field in self.COLUMN_MAPPING.items():
-                if api_field in racing_api_record:
-                    value = racing_api_record[api_field]
+            # Calculate runners count
+            runners_count = len(all_runners) if all_runners else 0
 
-                    # Special handling for certain fields
-                    if db_field == 'industry_sp':
-                        # Convert to float, handle multiple sources
-                        if api_field == 'odds_decimal':
-                            mapped['industry_sp'] = float(value) if value else None
-                        elif api_field in ['sp', 'sp_decimal'] and 'industry_sp' not in mapped:
-                            mapped['industry_sp'] = float(value) if value else None
+            # Get SP and position
+            sp_dec = combined_data.get('sp_dec')
+            position = combined_data.get('position')
 
-                    elif db_field == 'date_of_race':
-                        # Ensure proper date format (ISO 8601 with timezone)
-                        if isinstance(value, str):
-                            # API provides YYYY-MM-DD, convert to ISO 8601
-                            try:
-                                dt = datetime.strptime(value, '%Y-%m-%d')
-                                mapped['date_of_race'] = dt.strftime('%Y-%m-%dT00:00:00+00:00')
-                            except:
-                                mapped['date_of_race'] = value
+            # Extract pre-race odds min/max from REAL bookmaker odds
+            pre_race_odds = combined_data.get('pre_race_odds', [])
+            odds_minmax = self.extract_odds_minmax(pre_race_odds)
+            forecasted_odds = self.calculate_forecasted_odds(pre_race_odds)
 
-                    elif db_field == 'track':
-                        # Uppercase track names to match existing data
-                        mapped['track'] = value.upper() if value else None
+            # Calculate derived fields
+            sp_favorite_position = self.calculate_sp_favorite_position(all_runners or [], sp_dec)
+            sp_win_return = self.calculate_sp_win_return(sp_dec, position)
+            ew_return = self.calculate_ew_return(sp_dec, position, runners_count)
+            place_return = self.calculate_place_return(sp_dec, position, runners_count)
 
-                    elif db_field == 'finishing_position':
-                        # Ensure string format for position
-                        mapped['finishing_position'] = str(value) if value else None
+            # Parse fields
+            age = None
+            if combined_data.get('age'):
+                try:
+                    age = int(combined_data.get('age'))
+                except (ValueError, TypeError):
+                    pass
 
-                    elif db_field == 'stall_number':
-                        # Draw/stall number
-                        mapped['stall_number'] = int(value) if value else None
+            official_rating = None
+            if combined_data.get('or'):
+                try:
+                    official_rating = int(combined_data.get('or'))
+                except (ValueError, TypeError):
+                    pass
 
-                    elif db_field == 'race_class':
-                        # Extract numeric class from strings like "Class 6" or just "6"
-                        if isinstance(value, str):
-                            # Try to extract number from string
-                            import re
-                            match = re.search(r'\d+', value)
-                            if match:
-                                mapped['race_class'] = int(match.group())
-                            else:
-                                mapped['race_class'] = None
-                        elif value is not None:
-                            try:
-                                mapped['race_class'] = int(value)
-                            except (ValueError, TypeError):
-                                mapped['race_class'] = None
-                        else:
-                            mapped['race_class'] = None
+            stall_number = None
+            if combined_data.get('draw'):
+                try:
+                    stall_number = int(combined_data.get('draw'))
+                except (ValueError, TypeError):
+                    pass
 
-                    else:
-                        mapped[db_field] = value
+            industry_sp = None
+            if sp_dec:
+                try:
+                    industry_sp = float(sp_dec)
+                except (ValueError, TypeError):
+                    pass
 
-            # Set country based on course location (infer from data or default)
-            # In a real system, you'd have a lookup table
-            # For now, default to GB (can be enhanced)
-            mapped['country'] = self._infer_country(racing_api_record.get('course', ''))
+            # Build mapped record
+            mapped = {
+                # Primary key (auto-generated)
+                # 'racing_bet_data_id': auto-increment
 
-            # Note: darkhorses_course_id column has been removed
-            # The new table structure does not use foreign key references to ra_courses
+                # Race identification
+                'date_of_race': self._format_date(combined_data.get('race_date')),
+                'country': 'IRE' if combined_data.get('region') == 'ire' else 'GB',
+                'track': combined_data.get('course', '').upper() if combined_data.get('course') else None,
+                'race_time': combined_data.get('off_time'),
 
-            # In the new clean table, all fields except ID and timestamps are nullable
-            # No need to set default values, but we can for data quality if desired
-            # The application logic should handle missing values appropriately
+                # Race details
+                'going': combined_data.get('going'),
+                'race_type': combined_data.get('race_type'),
+                'distance': combined_data.get('distance'),
+                'race_class': race_class,
+                'runners_count': runners_count if runners_count > 0 else None,
 
-            # Note: darkhorses columns (darkhorses_race_id, darkhorses_jockey_id, darkhorses_runner_id,
-            # darkhorses_course_id) have been removed from the new table structure
+                # Horse & participant information
+                'horse_name': combined_data.get('horse_name'),
+                'official_rating': official_rating,
+                'age': age,
+                'weight': combined_data.get('weight'),
+                'jockey': combined_data.get('jockey'),
+                'trainer': combined_data.get('trainer'),
+                'headgear': combined_data.get('headgear'),
+                'stall_number': stall_number,
 
-            # Set data source to track origin
-            bookmaker_name = racing_api_record.get('bookmaker_name', 'Racing API')
-            mapped['data_source'] = f'Racing API - {bookmaker_name}'
+                # Market position
+                'sp_favorite_position': sp_favorite_position,
 
-            # Add file source tracking
-            mapped['file_source'] = 'racing_api_automated'
+                # Odds data (Industry SP from Results API)
+                'industry_sp': industry_sp,
 
-            # Set timestamps
-            now = datetime.now().isoformat()
-            mapped['created_at'] = now
-            mapped['updated_at'] = now
-            mapped['match_timestamp'] = now
+                # Results
+                'finishing_position': position,
+                'winning_distance': combined_data.get('btn'),  # beaten by (lengths)
 
-            # Set default values for Betfair-specific fields that aren't available
-            # These will be NULL unless we have data
-            betfair_fields = {
-                'betfair_sp': None,
-                'betfair_win_return': None,
-                'betfair_lay_return': None,
-                'betfair_place_sp': None,
-                'betfair_rank': None,
-                'placed_in_betfair_market': None,
-                'ip_min': None,
-                'ip_max': None,
-                'pre_race_min': None,
-                'pre_race_max': None,
-                'forecasted_odds': None,
-                'sp_win_return': None,
-                'ew_return': None,
-                'place_return': None,
-                'place_lay_return': None,
-                'tick_reduction': None,
-                'tick_inflation': None,
-                'bsp_reduction_percent': None,
-                'bsp_inflation_percent': None,
+                # Pre-race odds (REAL data from bookmakers!)
+                'ip_min': odds_minmax['min'],  # Actual minimum odds across all bookmakers
+                'ip_max': odds_minmax['max'],  # Actual maximum odds across all bookmakers
+                'pre_race_min': odds_minmax['min'],  # Same as ip_min
+                'pre_race_max': odds_minmax['max'],  # Same as ip_max
+                'forecasted_odds': forecasted_odds,  # Average of all bookmaker odds
+
+                # Returns & performance (calculated)
+                'sp_win_return': sp_win_return,
+                'ew_return': ew_return,
+                'place_return': place_return,
+
+                # Metadata & tracking
+                'data_source': 'Racing API - Racecards + Results',
+                'file_source': 'racing_api_combined_v1',
+
+                # Timestamps
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat(),
+                'match_timestamp': combined_data.get('off_dt'),
             }
 
-            # Only add betfair fields if they don't already exist
-            for field, default_value in betfair_fields.items():
-                if field not in mapped:
-                    mapped[field] = default_value
-
             # Validate required fields
-            missing = self.REQUIRED_FIELDS - set(mapped.keys())
+            required_fields = {'date_of_race', 'track', 'horse_name'}
+            missing = required_fields - {k for k, v in mapped.items() if v is not None}
+
             if missing:
                 logger.warning(f"Missing required fields: {missing}")
                 self.stats['skipped'] += 1
@@ -233,74 +444,58 @@ class SchemaMapper:
             self.stats['errors'] += 1
             return None
 
-    def _infer_country(self, course_name: str) -> str:
+    def _format_date(self, date_str: Optional[str]) -> Optional[str]:
         """
-        Infer country from course name
+        Format date to ISO 8601 with timezone
 
         Args:
-            course_name: Name of the course/track
+            date_str: Date string in YYYY-MM-DD format
 
         Returns:
-            'GB' or 'IRE'
+            ISO 8601 formatted date string
         """
-        if not course_name:
-            return 'GB'  # Default
+        if not date_str:
+            return None
 
-        course_name = course_name.upper()
+        try:
+            # Parse date and add timezone
+            dt = datetime.strptime(date_str, '%Y-%m-%d')
+            return dt.strftime('%Y-%m-%dT00:00:00+00:00')
+        except ValueError:
+            # Already in ISO format or invalid
+            return date_str
 
-        # Irish courses (not exhaustive, add more as needed)
-        irish_courses = {
-            'LEOPARDSTOWN', 'CURRAGH', 'FAIRYHOUSE', 'PUNCHESTOWN',
-            'GALWAY', 'LISTOWEL', 'NAAS', 'CORK', 'TIPPERARY',
-            'KILLARNEY', 'DOWNPATRICK', 'DUNDALK', 'GOWRAN PARK',
-            'KILBEGGAN', 'ROSCOMMON', 'SLIGO', 'TRAMORE', 'WEXFORD',
-            'CLONMEL', 'THURLES', 'BALLINROBE', 'BELLEWSTOWN',
-            'LAYTOWN'
-        }
-
-        return 'IRE' if course_name in irish_courses else 'GB'
-
-    def map_batch(self, racing_api_records: List[Dict]) -> List[Dict]:
+    def map_batch(self, combined_records: List[Dict]) -> List[Dict]:
         """
-        Map multiple Racing API records
+        Map multiple combined records
+
+        Note: Groups records by race to calculate favorite positions correctly
 
         Args:
-            racing_api_records: List of Racing API records
+            combined_records: List of combined records from fetcher
 
         Returns:
             List of mapped records (excludes failed mappings)
         """
         mapped_records = []
 
-        for record in racing_api_records:
-            mapped = self.map_racing_api_to_rb_odds(record)
-            if mapped:
-                mapped_records.append(mapped)
+        # Group by race_id to calculate favorite positions
+        races = {}
+        for record in combined_records:
+            race_id = record.get('race_id')
+            if race_id:
+                if race_id not in races:
+                    races[race_id] = []
+                races[race_id].append(record)
+
+        # Map each record with access to all runners in race
+        for race_id, runners in races.items():
+            for runner in runners:
+                mapped = self.map_combined_to_rb_odds(runner, all_runners=runners)
+                if mapped:
+                    mapped_records.append(mapped)
 
         return mapped_records
-
-    def create_unique_key(self, record: Dict) -> str:
-        """
-        Create a unique key for duplicate detection
-
-        Key: date + track + time + horse_name
-
-        Args:
-            record: Mapped record
-
-        Returns:
-            Unique key string
-        """
-        date = record.get('date_of_race', '')
-        track = record.get('track', '')
-        time = record.get('race_time', '')
-        horse = record.get('horse_name', '')
-
-        # Extract just the date part if it's a full timestamp
-        if 'T' in date:
-            date = date.split('T')[0]
-
-        return f"{date}|{track}|{time}|{horse}"
 
     def print_mapping_stats(self):
         """Print mapping statistics"""
@@ -318,43 +513,6 @@ class SchemaMapper:
 
         print("="*60 + "\n")
 
-    def get_column_definitions(self) -> Dict[str, str]:
-        """
-        Get column definitions for reference
-
-        Returns:
-            Dictionary of column names and their purposes
-        """
-        return {
-            'racing_bet_data_id': 'Auto-increment primary key',
-            'date_of_race': 'Race date (ISO 8601 format)',
-            'country': 'GB or IRE',
-            'track': 'Track/course name (uppercase)',
-            'going': 'Track conditions',
-            'race_type': 'Race type (Flat, NH, etc)',
-            'distance': 'Race distance',
-            'race_class': 'Race classification',
-            'race_time': 'Race start time (HH:MM:SS)',
-            'horse_name': 'Horse name',
-            'official_rating': 'Official rating',
-            'age': 'Horse age',
-            'weight': 'Weight carried',
-            'jockey': 'Jockey name',
-            'trainer': 'Trainer name',
-            'headgear': 'Headgear worn',
-            'stall_number': 'Starting stall/draw',
-            'sp_favorite_position': 'SP favorite ranking',
-            'runners_count': 'Number of runners',
-            'industry_sp': 'Starting price (decimal)',
-            'betfair_sp': 'Betfair starting price',
-            'finishing_position': 'Final position',
-            'winning_distance': 'Distance behind winner',
-            'data_source': 'Data source identifier',
-            'file_source': 'Source file identifier',
-            'created_at': 'Record creation timestamp',
-            'updated_at': 'Record update timestamp',
-        }
-
 
 if __name__ == "__main__":
     # Test the mapper
@@ -365,46 +523,56 @@ if __name__ == "__main__":
 
     mapper = SchemaMapper()
 
-    # Test record from Racing API
+    # Test record with pre-race odds
     test_record = {
         'race_id': 'rac_12345',
         'horse_id': 'hrs_67890',
-        'bookmaker_id': 'bet365',
         'race_date': '2024-09-30',
+        'region': 'gb',
         'course': 'Ascot',
         'off_time': '14:30:00',
-        'race_class': 2,
-        'race_type': 'Flat',
+        'off_dt': '2024-09-30T14:30:00+01:00',
+        'race_name': 'Test Stakes',
+        'race_class': 'class_2',
+        'race_type': 'flat',
         'distance': '1m',
-        'going': 'Good',
+        'going': 'good',
         'horse_name': 'Test Horse',
         'jockey': 'J Smith',
         'trainer': 'T Jones',
-        'age': 4,
+        'age': '4',
         'weight': '9-0',
-        'draw': 5,
+        'draw': '5',
+        'headgear': 'v',
         'position': '1',
-        'sp': '5.0',
-        'sp_decimal': 5.0,
-        'bookmaker_name': 'Bet365',
-        'odds_decimal': 4.5,
-        'odds_fractional': '7/2'
+        'btn': '0',
+        'sp': '5/2',
+        'sp_dec': '3.5',
+        'or': '110',
+        # Pre-race odds from multiple bookmakers
+        'pre_race_odds': [
+            {'bookmaker': 'Bet365', 'decimal': '3.25', 'fractional': '9/4'},
+            {'bookmaker': 'William Hill', 'decimal': '3.5', 'fractional': '5/2'},
+            {'bookmaker': 'Coral', 'decimal': '3.75', 'fractional': '11/4'},
+            {'bookmaker': 'Ladbrokes', 'decimal': '3.4', 'fractional': '12/5'},
+            {'bookmaker': 'Betfair', 'decimal': '3.6', 'fractional': '13/5'},
+        ]
     }
 
-    print("Testing Schema Mapper")
+    print("Testing Schema Mapper with Real Pre-Race Odds")
     print("="*60)
 
-    mapped = mapper.map_racing_api_to_rb_odds(test_record)
+    mapped = mapper.map_combined_to_rb_odds(test_record, all_runners=[test_record])
 
     if mapped:
-        print("\nOriginal Racing API Record:")
-        for key, value in test_record.items():
-            print(f"  {key}: {value}")
-
-        print("\nMapped to rb_odds_historical:")
-        for key, value in mapped.items():
-            print(f"  {key}: {value}")
-
-        print("\nUnique Key:", mapper.create_unique_key(mapped))
+        print("\nMapped record:")
+        print(f"  Horse: {mapped['horse_name']}")
+        print(f"  SP: {mapped['industry_sp']}")
+        print(f"  Pre-race min odds: {mapped['ip_min']}")
+        print(f"  Pre-race max odds: {mapped['ip_max']}")
+        print(f"  Forecasted odds: {mapped['forecasted_odds']}")
+        print(f"  SP win return: {mapped['sp_win_return']}")
+        print(f"  EW return: {mapped['ew_return']}")
+        print(f"  Place return: {mapped['place_return']}")
 
     mapper.print_mapping_stats()

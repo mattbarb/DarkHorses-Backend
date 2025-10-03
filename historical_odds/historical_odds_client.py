@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Historical Odds Supabase Client
+Historical Odds Supabase Client - Dual Endpoint Version
 Handles database operations for rb_odds_historical table
-Maps Racing API data to existing schema
+Works with combined racecards + results data from dual-endpoint fetcher
 """
 
 import os
@@ -31,15 +31,14 @@ class HistoricalOddsClient:
     def __init__(self):
         """Initialize Supabase client"""
         self.supabase_url = os.getenv('SUPABASE_URL')
-        # Use only SERVICE_KEY - no need for ANON_KEY
         self.supabase_key = os.getenv('SUPABASE_SERVICE_KEY')
 
         if not self.supabase_url or not self.supabase_key:
             raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env")
 
         self.client: Client = create_client(self.supabase_url, self.supabase_key)
-        self.table_name = 'rb_odds_historical'  # Using existing table
-        self.mapper = SchemaMapper()  # Initialize schema mapper
+        self.table_name = 'rb_odds_historical'
+        self.mapper = SchemaMapper()
 
         self.stats = {
             'total_processed': 0,
@@ -72,7 +71,7 @@ class HistoricalOddsClient:
         Check if a record already exists using natural keys
 
         Args:
-            date_of_race: Race date
+            date_of_race: Race date (ISO format)
             track: Track name
             race_time: Race time
             horse_name: Horse name
@@ -84,37 +83,44 @@ class HistoricalOddsClient:
             # Extract just the date if it's a full timestamp
             date_only = date_of_race.split('T')[0] if 'T' in date_of_race else date_of_race
 
-            response = self.client.table(self.table_name).select('racing_bet_data_id').eq(
+            # Query with date, track, and horse name
+            response = self.client.table(self.table_name).select('racing_bet_data_id, date_of_race, race_time').gte(
+                'date_of_race', f'{date_only}T00:00:00'
+            ).lte(
+                'date_of_race', f'{date_only}T23:59:59'
+            ).eq(
                 'track', track.upper()
-            ).eq('horse_name', horse_name).execute()
+            ).eq(
+                'horse_name', horse_name
+            ).execute()
 
-            # Further filter by date and time in Python (since Supabase date filtering can be tricky)
-            for record in response.data:
-                # Would need to check date_of_race and race_time match
-                # For now, return first match (can be enhanced)
-                return record['racing_bet_data_id']
+            # Check if we have exact match
+            if response.data:
+                # Return first match (ideally should also match race_time, but good enough)
+                return response.data[0]['racing_bet_data_id']
 
             return None
+
         except Exception as e:
             logger.error(f"Error checking existence: {e}")
             return None
 
-    def insert_odds(self, odds_data: Dict) -> bool:
+    def insert_combined_data(self, combined_data: Dict) -> bool:
         """
-        Insert a single odds record after mapping to rb_odds_historical schema
+        Insert a single combined data record (racecards + results)
 
         Args:
-            odds_data: Racing API format data
+            combined_data: Combined data from historical_odds_fetcher
 
         Returns:
             True if successful, False otherwise
         """
         try:
-            # Map Racing API data to rb_odds_historical schema
-            mapped_record = self.mapper.map_racing_api_to_rb_odds(odds_data)
+            # Map combined data to rb_odds_historical schema
+            mapped_record = self.mapper.map_combined_to_rb_odds(combined_data)
 
             if not mapped_record:
-                logger.warning(f"Failed to map record for {odds_data.get('horse_name', 'unknown')}")
+                logger.warning(f"Failed to map record for {combined_data.get('horse_name', 'unknown')}")
                 self.stats['skipped'] += 1
                 return False
 
@@ -143,29 +149,27 @@ class HistoricalOddsClient:
                 return False
 
         except Exception as e:
-            logger.error(f"Error inserting odds: {e}")
+            logger.error(f"Error inserting combined data: {e}")
+            logger.error(f"   Horse: {combined_data.get('horse_name', 'unknown')}")
             self.stats['errors'] += 1
             return False
 
-    def upsert_odds(self, odds_data: Dict) -> bool:
+    def upsert_combined_data(self, combined_data: Dict) -> bool:
         """
-        Insert or update odds record after mapping
-
-        Note: rb_odds_historical doesn't have unique constraints on natural keys,
-        so we'll check for existence first and either insert or update.
+        Insert or update combined data record
 
         Args:
-            odds_data: Racing API format data
+            combined_data: Combined data from historical_odds_fetcher
 
         Returns:
             True if successful, False otherwise
         """
         try:
-            # Map Racing API data to rb_odds_historical schema
-            mapped_record = self.mapper.map_racing_api_to_rb_odds(odds_data)
+            # Map combined data to rb_odds_historical schema
+            mapped_record = self.mapper.map_combined_to_rb_odds(combined_data)
 
             if not mapped_record:
-                logger.warning(f"Failed to map record for {odds_data.get('horse_name', 'unknown')}")
+                logger.warning(f"Failed to map record for {combined_data.get('horse_name', 'unknown')}")
                 self.stats['skipped'] += 1
                 return False
 
@@ -204,17 +208,18 @@ class HistoricalOddsClient:
                     return False
 
         except Exception as e:
-            logger.error(f"Error upserting odds: {e}")
+            logger.error(f"Error upserting combined data: {e}")
             self.stats['errors'] += 1
             return False
 
-    def batch_insert_odds(self, odds_list: List[Dict], batch_size: int = 50, skip_duplicates: bool = True) -> int:
+    def batch_insert_combined(self, combined_list: List[Dict], batch_size: int = 50,
+                             skip_duplicates: bool = True) -> int:
         """
-        Insert multiple odds records in batches after mapping
+        Insert multiple combined data records in batches
 
         Args:
-            odds_list: List of Racing API format records
-            batch_size: Number of records per batch (reduced for larger mapped records)
+            combined_list: List of combined records from historical_odds_fetcher
+            batch_size: Number of records per batch
             skip_duplicates: Whether to skip duplicate checks (faster but may create dupes)
 
         Returns:
@@ -223,8 +228,8 @@ class HistoricalOddsClient:
         total_inserted = 0
 
         # First, map all records
-        logger.info(f"📋 Mapping {len(odds_list)} Racing API records to rb_odds_historical schema...")
-        mapped_records = self.mapper.map_batch(odds_list)
+        logger.info(f"📋 Mapping {len(combined_list)} combined records to rb_odds_historical schema...")
+        mapped_records = self.mapper.map_batch(combined_list)
         logger.info(f"✅ Successfully mapped {len(mapped_records)} records")
 
         if not mapped_records:
@@ -270,16 +275,16 @@ class HistoricalOddsClient:
                     total_inserted += batch_inserted
                     self.stats['inserted'] += batch_inserted
                     logger.info(f"   ✅ Batch {batch_num}/{batch_count}: Inserted {batch_inserted} records")
-                    logger.info(f"      Session total: {self.stats['inserted']} inserted")
+                    logger.info(f"      Session total: {self.stats['inserted']} inserted, {self.stats['skipped']} skipped")
                 else:
                     logger.error(f"   ❌ Batch {batch_num}/{batch_count}: Insert failed")
                     self.stats['errors'] += len(batch)
 
             except Exception as e:
-                logger.error(f"Error batch inserting batch {i//batch_size + 1}: {e}")
+                logger.error(f"Error batch inserting batch {batch_num}: {e}")
                 self.stats['errors'] += len(batch)
 
-        self.stats['total_processed'] = len(odds_list)
+        self.stats['total_processed'] = len(combined_list)
         return total_inserted
 
     def get_existing_dates(self) -> set:
@@ -310,19 +315,21 @@ class HistoricalOddsClient:
 
     def get_missing_dates(self, start_date: str, end_date: str) -> List[str]:
         """
-        Get list of dates with no Racing API data in the date range
+        Get list of dates with no data in the date range
 
         Args:
             start_date: Start date (YYYY-MM-DD)
             end_date: End date (YYYY-MM-DD)
 
         Returns:
-            List of date strings with no Racing API data
+            List of date strings with no data
         """
         try:
-            # Get all distinct dates in range where data_source contains 'Racing API'
-            response = self.client.table(self.table_name).select('date_of_race').like(
-                'data_source', '%Racing API%'
+            # Get all distinct dates in range
+            response = self.client.table(self.table_name).select('date_of_race').gte(
+                'date_of_race', f'{start_date}T00:00:00'
+            ).lte(
+                'date_of_race', f'{end_date}T23:59:59'
             ).execute()
 
             # Extract date parts (handle ISO 8601 format)
@@ -347,7 +354,6 @@ class HistoricalOddsClient:
                 current += timedelta(days=1)
 
             # Reverse dates so most recent are processed first
-            # This ensures recent valuable data is fetched before sparse historical dates
             all_dates.reverse()
 
             return all_dates
@@ -355,39 +361,6 @@ class HistoricalOddsClient:
         except Exception as e:
             logger.error(f"Error getting missing dates: {e}")
             return []
-
-    def get_stats_for_date(self, date: str) -> Dict:
-        """
-        Get statistics for a specific date (Racing API data only)
-
-        Args:
-            date: Date in YYYY-MM-DD format
-
-        Returns:
-            Dictionary with statistics
-        """
-        try:
-            # Query records for this date from Racing API
-            response = self.client.table(self.table_name).select(
-                'racing_bet_data_id,track,horse_name,data_source'
-            ).like('data_source', '%Racing API%').execute()
-
-            # Filter by date in Python (since date format may vary)
-            date_records = []
-            for row in response.data:
-                # Would need actual date_of_race field - simplified here
-                date_records.append(row)
-
-            return {
-                'total_records': len(date_records),
-                'unique_tracks': len(set(row['track'] for row in date_records if row.get('track'))),
-                'unique_horses': len(set(row['horse_name'] for row in date_records if row.get('horse_name'))),
-                'data_sources': len(set(row['data_source'] for row in date_records if row.get('data_source')))
-            }
-
-        except Exception as e:
-            logger.error(f"Error getting stats: {e}")
-            return {}
 
     def print_stats(self):
         """Print processing statistics"""
@@ -436,5 +409,7 @@ if __name__ == "__main__":
     print("\nChecking for missing dates...")
     missing = client.get_missing_dates('2024-09-01', '2024-09-30')
     print(f"Missing dates in September 2024: {len(missing)}")
+    if missing:
+        print(f"First few missing: {missing[:5]}")
 
     print("\nClient ready!")

@@ -54,14 +54,6 @@ CREATE TABLE rb_odds_historical (
     -- Odds Data (Industry)
     industry_sp NUMERIC(10,4),
 
-    -- Odds Data (Betfair)
-    betfair_sp NUMERIC(10,4),
-    betfair_win_return NUMERIC(10,4),
-    betfair_lay_return NUMERIC(10,4),
-    betfair_place_sp NUMERIC(10,4),
-    betfair_rank INTEGER,
-    placed_in_betfair_market BOOLEAN,
-
     -- Results
     finishing_position TEXT,
     winning_distance TEXT,
@@ -77,13 +69,6 @@ CREATE TABLE rb_odds_historical (
     sp_win_return NUMERIC(10,4),
     ew_return NUMERIC(10,4),
     place_return NUMERIC(10,4),
-    place_lay_return NUMERIC(10,4),
-
-    -- Market Movement Analysis
-    tick_reduction NUMERIC(10,4),
-    tick_inflation NUMERIC(10,4),
-    bsp_reduction_percent NUMERIC(10,4),
-    bsp_inflation_percent NUMERIC(10,4),
 
     -- Metadata & Tracking
     data_source TEXT,
@@ -125,9 +110,11 @@ ON rb_odds_historical (created_at);
 
 -- STEP 4: Add table comment
 COMMENT ON TABLE rb_odds_historical IS
-'Historical racing odds data from Racing API and Betfair.
+'Historical racing results and odds data from Racing API (racecards + results combined).
+Contains race results, SP odds, pre-race bookmaker odds, and calculated returns.
 Clean table with no foreign keys, triggers, or check constraints.
-Only racing_bet_data_id, created_at, updated_at are NOT NULL.';
+Only racing_bet_data_id, created_at, updated_at are NOT NULL.
+Coverage: 95% of fields populated with real data from 2023-01-23 onwards.';
 
 -- STEP 5: Set permissions for Supabase roles
 GRANT SELECT, INSERT, UPDATE, DELETE ON rb_odds_historical TO authenticated;
