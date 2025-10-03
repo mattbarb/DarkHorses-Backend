@@ -203,15 +203,23 @@ class LiveOddsFetcher:
 
             if response.status_code == 200:
                 data = response.json()
-                return self._parse_odds_response(data, race_id, horse_id)
+                logger.debug(f"   📥 API Response for {horse_id}: {data}")
+                odds_list = self._parse_odds_response(data, race_id, horse_id)
+                if not odds_list:
+                    logger.warning(f"   ⚠️  API returned data but no odds parsed for {race_id}/{horse_id}. Response keys: {list(data.keys())}")
+                return odds_list
             elif response.status_code == 404:
+                logger.debug(f"   404 - No odds available for {race_id}/{horse_id}")
                 return []  # No odds available
             else:
-                logger.warning(f"API returned {response.status_code} for {race_id}/{horse_id}")
+                logger.warning(f"   ⚠️  API returned {response.status_code} for {race_id}/{horse_id}")
+                logger.warning(f"   Response: {response.text[:200]}")
                 return []
 
         except Exception as e:
-            logger.error(f"Error fetching live odds: {e}")
+            logger.error(f"   ❌ Error fetching live odds for {race_id}/{horse_id}: {e}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             self.stats['errors'] += 1
             return []
 
