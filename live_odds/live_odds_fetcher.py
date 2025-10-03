@@ -278,6 +278,19 @@ class LiveOddsFetcher:
                         bookmaker_info = BOOKMAKER_MAPPING.get(bookmaker_name)
 
                     if bookmaker_info:
+                        # Parse decimal odds, skip if unavailable ('-' or None)
+                        decimal_value = bookmaker_odds.get('decimal')
+                        if decimal_value and decimal_value != '-':
+                            try:
+                                decimal_float = float(decimal_value)
+                            except (ValueError, TypeError):
+                                logger.debug(f"   ⚠️  Invalid decimal value for {bookmaker_name}: {decimal_value}")
+                                continue
+                        else:
+                            # Skip odds that are withdrawn/unavailable
+                            logger.debug(f"   ⏭️  Skipping {bookmaker_name} - odds withdrawn/unavailable")
+                            continue
+
                         # Create OddsData object
                         odds = OddsData(
                             race_id=race_id,
@@ -285,7 +298,7 @@ class LiveOddsFetcher:
                             bookmaker_id=bookmaker_info['id'],
                             bookmaker_name=bookmaker_info['display_name'],
                             bookmaker_type=bookmaker_info['type'],
-                            odds_decimal=float(bookmaker_odds.get('decimal', 0)) if bookmaker_odds.get('decimal') else None,
+                            odds_decimal=decimal_float,
                             odds_fractional=bookmaker_odds.get('fractional'),
                             odds_timestamp=timestamp
                         )
