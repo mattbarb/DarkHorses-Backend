@@ -68,7 +68,16 @@ class LiveOddsSupabaseClient:
 
     def update_live_odds(self, odds_data: List[Dict]) -> Dict:
         """Update live odds with efficient batching and upserts"""
-        logger.info(f"Updating {len(odds_data)} live odds records")
+        logger.info(f"📥 RECEIVED {len(odds_data)} odds records to update")
+
+        # Log sample of first record
+        if odds_data:
+            sample = odds_data[0]
+            logger.info(f"   Sample record keys: {list(sample.keys())[:10]}...")
+            logger.info(f"   Sample race_id: {sample.get('race_id')}")
+            logger.info(f"   Sample horse_id: {sample.get('horse_id')}")
+            logger.info(f"   Sample bookmaker_id: {sample.get('bookmaker_id')}")
+
         self.stats = {
             'inserted': 0,
             'updated': 0,
@@ -86,14 +95,27 @@ class LiveOddsSupabaseClient:
                 if bookmaker_id not in bookmaker_groups:
                     bookmaker_groups[bookmaker_id] = []
                 bookmaker_groups[bookmaker_id].append(record)
+            else:
+                logger.warning(f"⚠️  Record missing bookmaker_id: {record.get('horse_name', 'unknown')}")
+
+        logger.info(f"📦 Grouped into {len(bookmaker_groups)} bookmakers: {list(bookmaker_groups.keys())}")
 
         # Process each bookmaker's odds
         for bookmaker_id, records in bookmaker_groups.items():
-            logger.info(f"Processing {len(records)} records for {bookmaker_id}")
+            logger.info(f"📤 Processing {len(records)} records for bookmaker: {bookmaker_id}")
             self._process_bookmaker_batch(bookmaker_id, records)
 
         # Log statistics
-        logger.info(f"Live odds update completed: {self.stats}")
+        logger.info(f"")
+        logger.info(f"=" * 80)
+        logger.info(f"✅ LIVE ODDS UPDATE COMPLETED")
+        logger.info(f"   Records inserted: {self.stats['inserted']}")
+        logger.info(f"   Records updated: {self.stats['updated']}")
+        logger.info(f"   Errors: {self.stats['errors']}")
+        logger.info(f"   Unique bookmakers: {len(self.stats['bookmakers'])}")
+        logger.info(f"   Unique races: {len(self.stats['races'])}")
+        logger.info(f"   Unique horses: {len(self.stats['horses'])}")
+        logger.info(f"=" * 80)
         return self.stats
 
     def _process_bookmaker_batch(self, bookmaker_id: str, records: List[Dict]):
@@ -183,8 +205,22 @@ class LiveOddsSupabaseClient:
                 'updated_at': datetime.now().isoformat()
             }
 
-            # Validate required fields
-            if not all([prepared['race_id'], prepared['horse_id'], prepared['bookmaker_id']]):
+            # Validate required fields (matching NOT NULL constraints in schema)
+            required_fields = {
+                'race_id': prepared.get('race_id'),
+                'horse_id': prepared.get('horse_id'),
+                'bookmaker_id': prepared.get('bookmaker_id'),
+                'race_date': prepared.get('race_date'),
+                'course': prepared.get('course'),
+                'horse_name': prepared.get('horse_name'),
+                'bookmaker_name': prepared.get('bookmaker_name'),
+                'odds_timestamp': prepared.get('odds_timestamp')
+            }
+
+            missing_fields = [k for k, v in required_fields.items() if not v]
+            if missing_fields:
+                logger.warning(f"⚠️  Record missing required fields: {missing_fields}")
+                logger.warning(f"   Horse: {prepared.get('horse_name', 'unknown')}")
                 return None
 
             return prepared

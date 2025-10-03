@@ -90,7 +90,7 @@ class LiveOddsScheduler:
         else:
             logger.info("⚠️ Monitor server disabled (Render.com worker mode)")
 
-    def get_upcoming_races(self) -> List[Dict]:
+    def get_upcoming_races(self, limit_races: int = None) -> List[Dict]:
         """Get upcoming races (today + next 7 days) that have live odds available"""
         try:
             today = datetime.now(UK_TZ).date()
@@ -100,6 +100,8 @@ class LiveOddsScheduler:
             current_date = today
 
             logger.info(f"📅 Fetching races from {today} to {end_date}...")
+            if limit_races:
+                logger.info(f"   ⚠️  Limiting to first {limit_races} races for testing")
 
             while current_date <= end_date:
                 date_str = current_date.strftime('%Y-%m-%d')
@@ -127,6 +129,12 @@ class LiveOddsScheduler:
                     if upcoming:
                         races.extend(upcoming)
                         logger.info(f"  Found {len(upcoming)}/{len(day_races)} upcoming races for {date_str}")
+
+                # Check if we've hit the limit
+                if limit_races and len(races) >= limit_races:
+                    logger.info(f"  ⚠️  Reached race limit ({limit_races}), stopping date fetch")
+                    races = races[:limit_races]
+                    break
 
                 current_date += timedelta(days=1)
 
@@ -344,8 +352,9 @@ class LiveOddsScheduler:
         try:
             logger.info("Starting fetch cycle...")
 
-            # Get upcoming races
-            races = self.get_upcoming_races()
+            # Get upcoming races (with optional limit for testing)
+            test_limit = int(os.getenv('TEST_RACE_LIMIT', '0'))
+            races = self.get_upcoming_races(limit_races=test_limit if test_limit > 0 else None)
 
             if not races:
                 logger.info("No upcoming races found")
