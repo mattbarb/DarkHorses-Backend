@@ -1,8 +1,9 @@
 services:
   # Historical Odds Service - Backfills from 2015 + Daily Updates
-  - type: worker
+  - type: background_worker
     name: historical-odds-service
     runtime: python
+    plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: python3 historical_odds/cron_historical.py
     envVars:
@@ -26,9 +27,10 @@ services:
         value: 1
 
   # Live Odds Service - Real-time odds with smart scheduling
-  - type: worker
+  - type: background_worker
     name: live-odds-service
     runtime: python
+    plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: python3 live_odds/cron_live.py
     envVars:
