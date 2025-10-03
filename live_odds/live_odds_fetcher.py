@@ -259,9 +259,12 @@ class LiveOddsFetcher:
         # Also check for 'odds' key (some APIs use this)
         if 'odds' in data:
             odds_data = data['odds']
+            logger.debug(f"   📊 'odds' key found. Type: {type(odds_data)}, Value: {odds_data}")
             # Parse embedded bookmaker odds
             if isinstance(odds_data, dict):
+                logger.debug(f"   🔑 Keys in odds dict: {list(odds_data.keys())}")
                 for key, value in odds_data.items():
+                    logger.debug(f"   🔍 Processing odds key '{key}': {value}")
                     bookmaker_info = BOOKMAKER_MAPPING.get(key.lower())
                     if bookmaker_info and value:
                         if bookmaker_info['type'] == 'exchange':
