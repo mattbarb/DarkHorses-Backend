@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from historical_odds_fetcher import HistoricalOddsFetcher
 from historical_odds_client import HistoricalOddsClient
 from backfill_historical import HistoricalBackfill
+from schema_mapping import SchemaMapper
 
 # Setup logging FIRST (before using logger anywhere)
 logging.basicConfig(
@@ -69,6 +70,7 @@ class HistoricalOddsScheduler:
         self.fetcher = HistoricalOddsFetcher()
         self.client = HistoricalOddsClient()
         self.backfill = HistoricalBackfill(start_year=start_year)
+        self.mapper = SchemaMapper()
 
         self.start_year = start_year
         self.last_run = None
@@ -160,82 +162,47 @@ class HistoricalOddsScheduler:
             yesterday = (datetime.now(UK_TZ) - timedelta(days=1)).date()
             date_str = yesterday.strftime('%Y-%m-%d')
 
-            logger.info(f"Fetching odds for yesterday: {date_str}")
+            logger.info(f"📅 Fetching odds for yesterday: {date_str}")
 
-            # Fetch results for yesterday
-            races = self.fetcher.fetch_complete_date_data(date_str, regions=['gb', 'ire'])
+            # Fetch complete runner data (racecards + results)
+            logger.info(f"  📡 Fetching data from Racing API...")
+            runner_records = self.fetcher.fetch_complete_date_data(date_str, regions=['gb', 'ire'])
 
-            if not races:
-                logger.info(f"No races found for {date_str}")
+            if not runner_records:
+                logger.info(f"  ⚠️  No data found for {date_str}")
                 return True
 
-            logger.info(f"Found {len(races)} races for {date_str}")
+            logger.info(f"  📊 Found {len(runner_records)} runner records")
 
-            # Process each race
+            # Map to database schema
+            logger.info(f"  🗺️  Mapping {len(runner_records)} records to database schema...")
+            mapped_records = self.mapper.map_batch(runner_records)
+
+            if not mapped_records:
+                logger.warning(f"  ⚠️  No records mapped successfully for {date_str}")
+                return False
+
+            logger.info(f"  ✅ Mapped {len(mapped_records)} records")
+
+            # Store in database
+            logger.info(f"  💾 Storing {len(mapped_records)} records in database...")
             total_stored = 0
-            for race in races:
-                race_id = race.get('race_id')
-                if not race_id:
-                    continue
+            for record in mapped_records:
+                try:
+                    success = self.client.upsert_odds(record)
+                    if success:
+                        total_stored += 1
+                except Exception as e:
+                    logger.error(f"  ❌ Error storing record: {e}")
 
-                runners = race.get('runners', [])
-                for runner in runners:
-                    horse_id = runner.get('horse_id')
-                    if not horse_id:
-                        continue
+            logger.info(f"  ✅ Successfully stored {total_stored}/{len(mapped_records)} records for {date_str}")
 
-                    try:
-                        # Fetch odds for this combination
-                        odds_response = self.fetcher.get_race_odds(race_id, horse_id)
-
-                        if odds_response:
-                            # Extract odds records from response
-                            odds_records = self.fetcher.extract_odds_from_response(
-                                odds_response,
-                                race_data={
-                                    'race_id': race_id,
-                                    'race_date': date_str,
-                                    'course': race.get('course'),
-                                    'off_time': race.get('off_time'),
-                                    'off_dt': race.get('off_dt'),
-                                    'race_name': race.get('race_name'),
-                                    'race_class': race.get('race_class'),
-                                    'race_type': race.get('race_type'),
-                                    'distance': race.get('distance'),
-                                    'distance_f': race.get('distance_f'),
-                                    'going': race.get('going'),
-                                    'prize': race.get('prize'),
-                                    'runners': race.get('runners', [])
-                                },
-                                horse_data={
-                                    'horse_id': horse_id,
-                                    'horse_name': runner.get('horse'),
-                                    'jockey': runner.get('jockey'),
-                                    'jockey_id': runner.get('jockey_id'),
-                                    'trainer': runner.get('trainer'),
-                                    'trainer_id': runner.get('trainer_id'),
-                                    'draw': runner.get('draw'),
-                                    'weight': runner.get('weight'),
-                                    'age': runner.get('age'),
-                                    'form': runner.get('form'),
-                                    'sp': runner.get('sp'),
-                                    'sp_dec': runner.get('sp_dec'),
-                                    'position': runner.get('position'),
-                                    'distance_behind': runner.get('distance_behind'),
-                                    'official_result': runner.get('official_result')
-                                }
-                            )
-
-                            # Store each odds record
-                            for odds_record in odds_records:
-                                success = self.client.upsert_odds(odds_record)
-                                if success:
-                                    total_stored += 1
-
-                    except Exception as e:
-                        logger.error(f"Error processing {race_id}/{horse_id}: {e}")
-
-            logger.info(f"Stored {total_stored} historical odds for {date_str}")
+            if MONITOR_ENABLED:
+                update_stats(
+                    races_processed_today=len(set(r.get('race_id') for r in mapped_records if r.get('race_id'))),
+                    odds_stored_today=total_stored
+                )
+                add_activity(f"Daily update: {total_stored} odds stored for {date_str}")
             return True
 
         except Exception as e:
@@ -294,83 +261,42 @@ class HistoricalOddsScheduler:
                             current_operation=f"Processing {process_date} ({i}/{len(dates_to_process)})"
                         )
 
-                    # Fetch races for this date
-                    races = self.fetcher.fetch_complete_date_data(process_date, regions=['gb', 'ire'])
+                    # Fetch complete runner data for this date (with pre-race odds + results)
+                    logger.info(f"  📡 Fetching data from Racing API...")
+                    runner_records = self.fetcher.fetch_complete_date_data(process_date, regions=['gb', 'ire'])
 
-                    if not races:
-                        logger.info(f"  No races found for {process_date}")
+                    if not runner_records:
+                        logger.info(f"  ⚠️  No data found for {process_date}")
                         continue
 
-                    logger.info(f"  Found {len(races)} races")
-                    race_count = 0
+                    logger.info(f"  📊 Found {len(runner_records)} runner records")
 
-                    # Process each race
-                    for race in races:
-                        race_id = race.get('race_id')
-                        if not race_id:
-                            continue
+                    # Map runner records to database schema
+                    logger.info(f"  🗺️  Mapping {len(runner_records)} records to database schema...")
+                    mapped_records = self.mapper.map_batch(runner_records)
 
-                        runners = race.get('runners', [])
-                        for runner in runners:
-                            horse_id = runner.get('horse_id')
-                            if not horse_id:
-                                continue
+                    if not mapped_records:
+                        logger.warning(f"  ⚠️  No records mapped successfully for {process_date}")
+                        continue
 
-                            try:
-                                # Fetch odds
-                                odds_response = self.fetcher.get_race_odds(race_id, horse_id)
+                    logger.info(f"  ✅ Mapped {len(mapped_records)} records")
 
-                                if odds_response:
-                                    # Extract and store odds
-                                    odds_records = self.fetcher.extract_odds_from_response(
-                                        odds_response,
-                                        race_data={
-                                            'race_id': race_id,
-                                            'race_date': process_date,
-                                            'course': race.get('course'),
-                                            'off_time': race.get('off_time'),
-                                            'off_dt': race.get('off_dt'),
-                                            'race_name': race.get('race_name'),
-                                            'race_class': race.get('race_class'),
-                                            'race_type': race.get('race_type'),
-                                            'distance': race.get('distance'),
-                                            'distance_f': race.get('distance_f'),
-                                            'going': race.get('going'),
-                                            'prize': race.get('prize'),
-                                            'runners': race.get('runners', [])
-                                        },
-                                        horse_data={
-                                            'horse_id': horse_id,
-                                            'horse_name': runner.get('horse'),
-                                            'jockey': runner.get('jockey'),
-                                            'jockey_id': runner.get('jockey_id'),
-                                            'trainer': runner.get('trainer'),
-                                            'trainer_id': runner.get('trainer_id'),
-                                            'draw': runner.get('draw'),
-                                            'weight': runner.get('weight'),
-                                            'age': runner.get('age'),
-                                            'form': runner.get('form'),
-                                            'sp': runner.get('sp'),
-                                            'sp_dec': runner.get('sp_dec'),
-                                            'position': runner.get('position'),
-                                            'distance_behind': runner.get('distance_behind'),
-                                            'official_result': runner.get('official_result')
-                                        }
-                                    )
+                    # Store in database
+                    logger.info(f"  💾 Storing {len(mapped_records)} records in database...")
+                    stored_count = 0
+                    for record in mapped_records:
+                        try:
+                            success = self.client.upsert_odds(record)
+                            if success:
+                                stored_count += 1
+                        except Exception as e:
+                            logger.error(f"  ❌ Error storing record: {e}")
 
-                                    for odds_record in odds_records:
-                                        success = self.client.upsert_odds(odds_record)
-                                        if success:
-                                            total_odds += 1
+                    logger.info(f"  ✅ Successfully stored {stored_count}/{len(mapped_records)} records")
 
-                            except Exception as e:
-                                logger.error(f"  Error processing {race_id}/{horse_id}: {e}")
-
-                        race_count += 1
-
-                    total_races += race_count
+                    total_odds += stored_count
+                    total_races += len(set(r.get('race_id') for r in mapped_records if r.get('race_id')))
                     successful_dates += 1
-                    logger.info(f"  ✅ Stored odds for {race_count} races")
 
                     # Update state
                     self.state['dates_processed'] = successful_dates
