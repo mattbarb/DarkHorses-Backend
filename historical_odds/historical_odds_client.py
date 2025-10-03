@@ -31,12 +31,27 @@ class HistoricalOddsClient:
     def __init__(self):
         """Initialize Supabase client"""
         self.supabase_url = os.getenv('SUPABASE_URL')
-        self.supabase_key = os.getenv('SUPABASE_SERVICE_KEY')
+        self.supabase_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_KEY')
+
+        # Debug logging
+        logger.info(f"🔍 Environment variable check:")
+        logger.info(f"   SUPABASE_URL: {self.supabase_url[:30] if self.supabase_url else 'NOT SET'}...")
+        logger.info(f"   SUPABASE_SERVICE_KEY: {'SET (' + str(len(self.supabase_key)) + ' chars)' if self.supabase_key else 'NOT SET'}")
 
         if not self.supabase_url or not self.supabase_key:
-            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env")
+            logger.error("❌ Missing required environment variables!")
+            logger.error(f"   SUPABASE_URL: {self.supabase_url}")
+            logger.error(f"   SUPABASE_SERVICE_KEY: {'SET' if self.supabase_key else 'NOT SET'}")
+            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment")
 
-        self.client: Client = create_client(self.supabase_url, self.supabase_key)
+        # Initialize client with proper error handling
+        try:
+            logger.info(f"📡 Creating Supabase client...")
+            self.client: Client = create_client(self.supabase_url, self.supabase_key)
+            logger.info(f"✅ Supabase client created successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to create Supabase client: {e}")
+            raise ValueError(f"Could not initialize Supabase client: {e}")
         self.table_name = 'rb_odds_historical'
         self.mapper = SchemaMapper()
 

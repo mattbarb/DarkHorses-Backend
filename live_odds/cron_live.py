@@ -116,8 +116,10 @@ class LiveOddsScheduler:
                             try:
                                 # Parse race time
                                 race_time = date_parser.parse(off_dt_str)
-                                # Include races that haven't finished (assume 10 min race duration)
-                                if race_time > now - timedelta(minutes=10):
+                                # Only include races within next 3 hours (live odds available)
+                                # or races that just finished (within last 10 minutes)
+                                time_until_race = (race_time - now).total_seconds() / 60  # minutes
+                                if -10 <= time_until_race <= 180:  # -10 to +180 minutes
                                     upcoming.append(race)
                             except:
                                 # If can't parse time, include it anyway
@@ -128,7 +130,9 @@ class LiveOddsScheduler:
 
                     if upcoming:
                         races.extend(upcoming)
-                        logger.info(f"  Found {len(upcoming)}/{len(day_races)} upcoming races for {date_str}")
+                        logger.info(f"  Found {len(upcoming)}/{len(day_races)} races within 3 hours for {date_str}")
+                    elif day_races:
+                        logger.info(f"  Skipped {len(day_races)} races for {date_str} (all >3 hours away)")
 
                 # Check if we've hit the limit
                 if limit_races and len(races) >= limit_races:
