@@ -222,22 +222,44 @@ class LiveOddsScheduler:
                 # Get runners for this race
                 runners = race.get('runners', [])
 
-                # Only log first 5 races and then every 10th for less noise
-                if race_idx <= 5 or race_idx % 10 == 0:
+                # ALWAYS log for debugging when we have TEST_RACE_LIMIT set
+                if race_idx <= 10:
+                    logger.info(f"  [{race_idx}/{len(races)}] Processing {race.get('course')} {race.get('off_time')}")
+                    logger.info(f"      Race ID: {race_id}")
+                    logger.info(f"      Runners: {len(runners)}")
+                    if len(runners) == 0:
+                        logger.warning(f"      ⚠️  NO RUNNERS IN THIS RACE!")
+                        logger.warning(f"      Race keys: {list(race.keys())}")
+                    else:
+                        logger.info(f"      Sample runner keys: {list(runners[0].keys())[:10] if runners else 'N/A'}")
+                elif race_idx % 10 == 0:
                     logger.info(f"  [{race_idx}/{len(races)}] Processing {race.get('course')} {race.get('off_time')} - {len(runners)} runners")
-                elif race_idx % 50 == 0:
-                    logger.info(f"  ... processed {race_idx}/{len(races)} races so far ...")
 
+                if not runners:
+                    logger.warning(f"  ⚠️  Skipping race {race_id} - no runners")
+                    continue
+
+                horses_checked_in_race = 0
                 for runner in runners:
                     horse_id = runner.get('horse_id')
                     horse_name = runner.get('horse', 'Unknown')
                     if not horse_id:
-                        logger.debug(f"    ⚠️  Skipping {horse_name} - no horse_id")
+                        if race_idx <= 10:
+                            logger.warning(f"      ⚠️  Runner missing horse_id: {horse_name}")
                         continue
+
+                    horses_checked_in_race += 1
+
+                    # Log first horse in first few races
+                    if race_idx <= 3 and horses_checked_in_race == 1:
+                        logger.info(f"      → Checking odds for first horse: {horse_name} (ID: {horse_id})")
 
                     try:
                         # Fetch odds for this horse/race combination (returns list of OddsData objects)
                         odds_list = self.fetcher.fetch_live_odds(race_id, horse_id)
+
+                        if race_idx <= 3 and horses_checked_in_race == 1:
+                            logger.info(f"         API returned {len(odds_list) if odds_list else 0} odds")
 
                         if odds_list:
                             # Log first successful odds fetch
