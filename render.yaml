@@ -1,6 +1,6 @@
 services:
   # Historical Odds Service - Backfills from 2015 + Daily Updates
-  - type: background_worker
+  - type: worker
     name: historical-odds-service
     runtime: python
     plan: starter
@@ -27,7 +27,7 @@ services:
         value: 1
 
   # Live Odds Service - Real-time odds with smart scheduling
-  - type: background_worker
+  - type: worker
     name: live-odds-service
     runtime: python
     plan: starter
