@@ -200,15 +200,25 @@ class LiveOddsSupabaseClient:
 
             # Log first record for debugging
             if records:
-                logger.info(f"   Sample: {records[0].get('horse_name', 'unknown')} @ "
-                           f"{records[0].get('course', 'unknown')} - "
-                           f"{records[0].get('bookmaker_name', 'unknown')}")
+                sample = records[0]
+                logger.info(f"   Sample record:")
+                logger.info(f"     Horse: {sample.get('horse_name', 'unknown')}")
+                logger.info(f"     Course: {sample.get('course', 'unknown')}")
+                logger.info(f"     Race ID: {sample.get('race_id', 'unknown')}")
+                logger.info(f"     Horse ID: {sample.get('horse_id', 'unknown')}")
+                logger.info(f"     Bookmaker: {sample.get('bookmaker_name', 'unknown')} ({sample.get('bookmaker_id', 'unknown')})")
+                logger.info(f"     Odds: {sample.get('odds_decimal', 'N/A')}")
 
             # Try upsert with conflict resolution
+            logger.info(f"   Sending upsert request to Supabase...")
             response = self.client.table('ra_odds_live').upsert(
                 records,
                 on_conflict='race_id,horse_id,bookmaker_id'
             ).execute()
+
+            logger.info(f"   Response received from Supabase")
+            logger.info(f"   Response.data type: {type(response.data)}")
+            logger.info(f"   Response.data length: {len(response.data) if response.data else 0}")
 
             if response.data:
                 count = len(response.data)
@@ -217,11 +227,17 @@ class LiveOddsSupabaseClient:
                 logger.info(f"   Total in this session: {self.stats['updated']} records")
             else:
                 logger.warning(f"⚠️  Upsert returned no data for {len(records)} records")
+                logger.warning(f"   This could mean:")
+                logger.warning(f"     - Records were updated but Supabase didn't return them")
+                logger.warning(f"     - There was a schema mismatch")
+                logger.warning(f"     - Database constraints prevented insertion")
 
         except Exception as e:
             logger.error(f"❌ Upsert error to ra_odds_live: {e}")
-            logger.error(f"Error type: {type(e).__name__}")
-            logger.error(f"Error details: {str(e)}")
+            logger.error(f"   Error type: {type(e).__name__}")
+            logger.error(f"   Error details: {str(e)}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
 
             # Try without on_conflict if that's the issue
             try:

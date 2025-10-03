@@ -297,12 +297,17 @@ class LiveOddsScheduler:
 
             # Log processing summary
             logger.info(f"")
+            logger.info(f"=" * 80)
             logger.info(f"📊 PROCESSING SUMMARY:")
             logger.info(f"   Races processed: {stats['races_processed']}/{len(races)}")
             logger.info(f"   Horses processed: {stats['horses_processed']}")
+            logger.info(f"   Total horses checked: {stats['races_processed'] * 10} (approx)")
             logger.info(f"   Odds records collected: {len(all_odds_records)}")
-            logger.info(f"   Unique bookmakers: {len(bookmakers_seen)} - {bookmakers_seen}")
+            logger.info(f"   Unique bookmakers: {len(bookmakers_seen)}")
+            if bookmakers_seen:
+                logger.info(f"   Bookmakers: {', '.join(sorted(bookmakers_seen))}")
             logger.info(f"   Errors: {stats['errors']}")
+            logger.info(f"=" * 80)
             logger.info(f"")
 
             # Store all odds in database in one batch
