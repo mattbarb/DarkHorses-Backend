@@ -390,6 +390,68 @@ class HistoricalOddsClient:
             'errors': 0
         }
 
+    def upsert_odds(self, mapped_record: Dict) -> bool:
+        """
+        Insert or update a pre-mapped odds record (for use with SchemaMapper)
+
+        Args:
+            mapped_record: Already-mapped record matching rb_odds_historical schema
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if not mapped_record.get('horse_name'):
+                logger.warning("⚠️  Record missing horse_name, skipping")
+                self.stats['skipped'] += 1
+                return False
+
+            # Check if already exists
+            existing_id = self.check_exists(
+                mapped_record['date_of_race'],
+                mapped_record['track'],
+                mapped_record.get('race_time', ''),
+                mapped_record['horse_name']
+            )
+
+            if existing_id:
+                # Update existing record
+                logger.debug(f"  📝 Updating existing record for {mapped_record['horse_name']}")
+                mapped_record['updated_at'] = datetime.now().isoformat()
+                response = self.client.table(self.table_name).update(
+                    mapped_record
+                ).eq('racing_bet_data_id', existing_id).execute()
+
+                if response.data:
+                    self.stats['updated'] += 1
+                    self.stats['total_processed'] += 1
+                    return True
+                else:
+                    logger.error(f"  ❌ Update failed for {mapped_record['horse_name']}")
+                    self.stats['errors'] += 1
+                    return False
+            else:
+                # Insert new record
+                logger.debug(f"  ➕ Inserting new record for {mapped_record['horse_name']}")
+                response = self.client.table(self.table_name).insert(mapped_record).execute()
+
+                if response.data:
+                    self.stats['inserted'] += 1
+                    self.stats['total_processed'] += 1
+                    return True
+                else:
+                    logger.error(f"  ❌ Insert failed for {mapped_record['horse_name']}")
+                    self.stats['errors'] += 1
+                    return False
+
+        except Exception as e:
+            logger.error(f"  ❌ Error upserting record: {e}")
+            logger.error(f"     Horse: {mapped_record.get('horse_name', 'unknown')}")
+            logger.error(f"     Track: {mapped_record.get('track', 'unknown')}")
+            logger.error(f"     Date: {mapped_record.get('date_of_race', 'unknown')}")
+            self.stats['errors'] += 1
+            return False
+
 
 if __name__ == "__main__":
     # Test the client
