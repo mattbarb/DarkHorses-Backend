@@ -200,15 +200,23 @@ class LiveOddsSupabaseClient:
 
             # Log first record for debugging
             if records:
-                logger.info(f"   Sample: {records[0].get('horse_name', 'unknown')} @ "
-                           f"{records[0].get('course', 'unknown')} - "
-                           f"{records[0].get('bookmaker_name', 'unknown')}")
+                sample = records[0]
+                logger.info(f"   Sample record details:")
+                logger.info(f"   - Horse: {sample.get('horse_name', 'unknown')}")
+                logger.info(f"   - Course: {sample.get('course', 'unknown')}")
+                logger.info(f"   - Bookmaker: {sample.get('bookmaker_name', 'unknown')} ({sample.get('bookmaker_id', 'unknown')})")
+                logger.info(f"   - Race ID: {sample.get('race_id', 'unknown')}")
+                logger.info(f"   - Horse ID: {sample.get('horse_id', 'unknown')}")
+                logger.info(f"   - Odds: {sample.get('odds_decimal', 'N/A')}")
+                logger.info(f"   - Timestamp: {sample.get('odds_timestamp', 'N/A')}")
 
             # Try upsert with conflict resolution
+            logger.info(f"   🔄 Calling Supabase upsert...")
             response = self.client.table('ra_odds_live').upsert(
                 records,
                 on_conflict='race_id,horse_id,bookmaker_id'
             ).execute()
+            logger.info(f"   ✅ Supabase upsert call completed")
 
             if response.data:
                 count = len(response.data)

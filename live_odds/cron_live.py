@@ -90,28 +90,24 @@ class LiveOddsScheduler:
             logger.info("⚠️ Monitor server disabled (Render.com worker mode)")
 
     def get_upcoming_races(self) -> List[Dict]:
-        """Get races for today and tomorrow (for live odds)"""
+        """Get races from past 14 days to today (to update odds for recent races)"""
         try:
             today = datetime.now(UK_TZ).date()
-            tomorrow = today + timedelta(days=1)
+            start_date = today - timedelta(days=14)  # Past 14 days
 
             races = []
+            current_date = start_date
 
-            # Fetch today's races
-            today_str = today.strftime('%Y-%m-%d')
-            today_races = self.fetcher._fetch_races_for_date(today_str)
-            if today_races:
-                races.extend(today_races)
-                logger.info(f"📅 Found {len(today_races)} races for TODAY ({today_str})")
+            while current_date <= today:
+                date_str = current_date.strftime('%Y-%m-%d')
+                day_races = self.fetcher._fetch_races_for_date(date_str)
+                if day_races:
+                    races.extend(day_races)
+                    logger.info(f"Found {len(day_races)} races for {date_str}")
 
-            # Fetch tomorrow's races
-            tomorrow_str = tomorrow.strftime('%Y-%m-%d')
-            tomorrow_races = self.fetcher._fetch_races_for_date(tomorrow_str)
-            if tomorrow_races:
-                races.extend(tomorrow_races)
-                logger.info(f"📅 Found {len(tomorrow_races)} races for TOMORROW ({tomorrow_str})")
+                current_date += timedelta(days=1)
 
-            logger.info(f"✅ Total upcoming races (today + tomorrow): {len(races)}")
+            logger.info(f"Total races from past 14 days: {len(races)}")
             return races
 
         except Exception as e:
@@ -198,10 +194,11 @@ class LiveOddsScheduler:
 
                     try:
                         # Fetch odds for this horse/race combination (returns list of OddsData objects)
+                        logger.info(f"   🔍 Fetching odds for race {race_id}, horse {horse_id} ({runner.get('horse', 'unknown')})")
                         odds_list = self.fetcher.fetch_live_odds(race_id, horse_id)
 
                         if odds_list:
-                            logger.debug(f"   📊 Found {len(odds_list)} odds for {runner.get('horse')} in race {race_id}")
+                            logger.info(f"   ✅ Found {len(odds_list)} odds for {runner.get('horse')} in race {race_id}")
                             # Convert OddsData objects to dict records for database
                             for odds in odds_list:
                                 record = {
