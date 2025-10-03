@@ -24,7 +24,7 @@ from live_odds_client import LiveOddsSupabaseClient
 
 # Setup logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Changed to DEBUG to see detailed odds parsing
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
@@ -90,34 +90,24 @@ class LiveOddsScheduler:
             logger.info("⚠️ Monitor server disabled (Render.com worker mode)")
 
     def get_upcoming_races(self) -> List[Dict]:
-        """Get races for today and tomorrow (live odds)"""
+        """Get races from past 14 days to today (to update odds for recent races)"""
         try:
             today = datetime.now(UK_TZ).date()
-            tomorrow = today + timedelta(days=1)
+            start_date = today - timedelta(days=14)  # Past 14 days
 
             races = []
+            current_date = start_date
 
-            # Fetch today's races
-            today_str = today.strftime('%Y-%m-%d')
-            logger.info(f"📅 Fetching races for TODAY: {today_str}")
-            today_races = self.fetcher._fetch_races_for_date(today_str)
-            if today_races:
-                races.extend(today_races)
-                logger.info(f"✅ Found {len(today_races)} races for TODAY ({today_str})")
-            else:
-                logger.info(f"⚠️  No races found for today")
+            while current_date <= today:
+                date_str = current_date.strftime('%Y-%m-%d')
+                day_races = self.fetcher._fetch_races_for_date(date_str)
+                if day_races:
+                    races.extend(day_races)
+                    logger.info(f"Found {len(day_races)} races for {date_str}")
 
-            # Fetch tomorrow's races
-            tomorrow_str = tomorrow.strftime('%Y-%m-%d')
-            logger.info(f"📅 Fetching races for TOMORROW: {tomorrow_str}")
-            tomorrow_races = self.fetcher._fetch_races_for_date(tomorrow_str)
-            if tomorrow_races:
-                races.extend(tomorrow_races)
-                logger.info(f"✅ Found {len(tomorrow_races)} races for TOMORROW ({tomorrow_str})")
-            else:
-                logger.info(f"⚠️  No races found for tomorrow")
+                current_date += timedelta(days=1)
 
-            logger.info(f"✅ Total upcoming races (today + tomorrow): {len(races)}")
+            logger.info(f"Total races from past 14 days: {len(races)}")
             return races
 
         except Exception as e:
@@ -204,11 +194,9 @@ class LiveOddsScheduler:
 
                     try:
                         # Fetch odds for this horse/race combination (returns list of OddsData objects)
-                        logger.info(f"   🔍 Fetching odds for race {race_id}, horse {horse_id} ({runner.get('horse', 'unknown')})")
                         odds_list = self.fetcher.fetch_live_odds(race_id, horse_id)
 
                         if odds_list:
-                            logger.info(f"   ✅ Found {len(odds_list)} odds for {runner.get('horse')} in race {race_id}")
                             # Convert OddsData objects to dict records for database
                             for odds in odds_list:
                                 record = {
@@ -274,26 +262,14 @@ class LiveOddsScheduler:
 
             # Store all odds in database in one batch
             if all_odds_records:
-                logger.info(f"💾 Attempting to store {len(all_odds_records)} odds records to Supabase table 'ra_odds_live'...")
-                logger.info(f"   🔌 Database URL: {os.getenv('SUPABASE_URL', 'NOT SET')}")
-                logger.info(f"   📝 Sample record: race_id={all_odds_records[0].get('race_id')}, horse={all_odds_records[0].get('horse_name')}, bookmaker={all_odds_records[0].get('bookmaker_name')}")
+                logger.info(f"📊 Collected {len(all_odds_records)} odds records, now storing to ra_odds_live...")
+                db_stats = self.client.update_live_odds(all_odds_records)
+                logger.info(f"✅ Database update complete: {db_stats}")
 
-                try:
-                    db_stats = self.client.update_live_odds(all_odds_records)
-                    logger.info(f"✅ DATABASE INSERT SUCCESS: {db_stats}")
-                    logger.info(f"   📊 Records inserted/updated: {db_stats.get('updated', 0)}")
-                    logger.info(f"   ❌ Records failed: {db_stats.get('failed', 0)}")
-
-                    if MONITOR_ENABLED:
-                        add_activity(f"Stored {len(all_odds_records)} odds to ra_odds_live (updated: {db_stats.get('updated', 0)})")
-                except Exception as db_error:
-                    logger.error(f"❌ DATABASE INSERT FAILED: {db_error}")
-                    logger.error(f"   Error type: {type(db_error).__name__}")
-                    import traceback
-                    logger.error(f"   Traceback: {traceback.format_exc()}")
+                if MONITOR_ENABLED:
+                    add_activity(f"Stored {len(all_odds_records)} odds to ra_odds_live (updated: {db_stats.get('updated', 0)})")
             else:
-                logger.warning("⚠️  No odds records collected - nothing to store in database")
-                logger.warning(f"   Races processed: {stats['races_processed']}, Horses: {stats['horses_processed']}, Errors: {stats['errors']}")
+                logger.warning("⚠️  No odds records collected to store in database")
 
             return stats
 

@@ -199,27 +199,19 @@ class LiveOddsFetcher:
 
         try:
             time.sleep(self.api_delay)
-            response = self.session.get(url, timeout=30)  # Increased from 10 to 30 seconds
+            response = self.session.get(url, timeout=10)
 
             if response.status_code == 200:
                 data = response.json()
-                logger.debug(f"   📥 API Response for {horse_id}: {data}")
-                odds_list = self._parse_odds_response(data, race_id, horse_id)
-                if not odds_list:
-                    logger.warning(f"   ⚠️  API returned data but no odds parsed for {race_id}/{horse_id}. Response keys: {list(data.keys())}")
-                return odds_list
+                return self._parse_odds_response(data, race_id, horse_id)
             elif response.status_code == 404:
-                logger.debug(f"   404 - No odds available for {race_id}/{horse_id}")
                 return []  # No odds available
             else:
-                logger.warning(f"   ⚠️  API returned {response.status_code} for {race_id}/{horse_id}")
-                logger.warning(f"   Response: {response.text[:200]}")
+                logger.warning(f"API returned {response.status_code} for {race_id}/{horse_id}")
                 return []
 
         except Exception as e:
-            logger.error(f"   ❌ Error fetching live odds for {race_id}/{horse_id}: {e}")
-            import traceback
-            logger.error(f"   Traceback: {traceback.format_exc()}")
+            logger.error(f"Error fetching live odds: {e}")
             self.stats['errors'] += 1
             return []
 
@@ -256,63 +248,12 @@ class LiveOddsFetcher:
                             odds_list.append(odds)
                             self.stats['bookmakers_found'].add(bookmaker_info['id'])
 
-        # Also check for 'odds' key (Racing API format)
+        # Also check for 'odds' key (some APIs use this)
         if 'odds' in data:
             odds_data = data['odds']
-            logger.debug(f"   📊 'odds' key found. Type: {type(odds_data)}")
-
-            # Handle array format (Racing API live odds)
-            if isinstance(odds_data, list):
-                logger.info(f"   📋 Processing {len(odds_data)} bookmakers from odds array")
-                for bookmaker_odds in odds_data:
-                    if not isinstance(bookmaker_odds, dict):
-                        continue
-
-                    bookmaker_name = bookmaker_odds.get('bookmaker', '').lower()
-                    # Map bookmaker name to our internal format
-                    bookmaker_key = bookmaker_name.replace(' ', '').replace('sports', '').replace('bet', '')
-                    bookmaker_info = BOOKMAKER_MAPPING.get(bookmaker_key.lower())
-
-                    # If not found, try the original name
-                    if not bookmaker_info:
-                        bookmaker_info = BOOKMAKER_MAPPING.get(bookmaker_name)
-
-                    if bookmaker_info:
-                        # Parse decimal odds, skip if unavailable ('-' or None)
-                        decimal_value = bookmaker_odds.get('decimal')
-                        if decimal_value and decimal_value != '-':
-                            try:
-                                decimal_float = float(decimal_value)
-                            except (ValueError, TypeError):
-                                logger.debug(f"   ⚠️  Invalid decimal value for {bookmaker_name}: {decimal_value}")
-                                continue
-                        else:
-                            # Skip odds that are withdrawn/unavailable
-                            logger.debug(f"   ⏭️  Skipping {bookmaker_name} - odds withdrawn/unavailable")
-                            continue
-
-                        # Create OddsData object
-                        odds = OddsData(
-                            race_id=race_id,
-                            horse_id=horse_id,
-                            bookmaker_id=bookmaker_info['id'],
-                            bookmaker_name=bookmaker_info['display_name'],
-                            bookmaker_type=bookmaker_info['type'],
-                            odds_decimal=decimal_float,
-                            odds_fractional=bookmaker_odds.get('fractional'),
-                            odds_timestamp=timestamp
-                        )
-                        odds_list.append(odds)
-                        self.stats['bookmakers_found'].add(bookmaker_info['id'])
-                        logger.debug(f"   ✅ Added {bookmaker_info['display_name']}: {odds.odds_decimal}")
-                    else:
-                        logger.debug(f"   ⚠️  Unknown bookmaker: {bookmaker_name}")
-
-            # Handle dict format (legacy/other APIs)
-            elif isinstance(odds_data, dict):
-                logger.debug(f"   🔑 Keys in odds dict: {list(odds_data.keys())}")
+            # Parse embedded bookmaker odds
+            if isinstance(odds_data, dict):
                 for key, value in odds_data.items():
-                    logger.debug(f"   🔍 Processing odds key '{key}': {value}")
                     bookmaker_info = BOOKMAKER_MAPPING.get(key.lower())
                     if bookmaker_info and value:
                         if bookmaker_info['type'] == 'exchange':
@@ -436,26 +377,26 @@ class LiveOddsFetcher:
 
         # Extract all horse/race combinations
         for race in races:
-            race_id = race.get('id_race')
+            race_id = race.get('race_id')
             if not race_id:
                 continue
 
             race_meta = {
                 'race_id': race_id,
-                'race_date': race.get('date'),
+                'race_date': race.get('race_date'),
                 'race_time': race.get('off_time'),
                 'off_dt': race.get('off_dt'),
                 'course': race.get('course'),
                 'race_name': race.get('race_name'),
                 'race_class': race.get('race_class'),
-                'race_type': race.get('type'),
+                'race_type': race.get('race_type'),
                 'distance': race.get('distance'),
                 'going': race.get('going'),
-                'runners': race.get('runners')
+                'runners': len(race.get('runners', []))
             }
 
-            for horse in race.get('horses', []):
-                horse_id = horse.get('id_horse')
+            for horse in race.get('runners', []):
+                horse_id = horse.get('horse_id')
                 if not horse_id:
                     continue
 
