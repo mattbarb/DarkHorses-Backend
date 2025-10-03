@@ -90,24 +90,34 @@ class LiveOddsScheduler:
             logger.info("⚠️ Monitor server disabled (Render.com worker mode)")
 
     def get_upcoming_races(self) -> List[Dict]:
-        """Get races from past 14 days to today (to update odds for recent races)"""
+        """Get races for today and tomorrow (live odds)"""
         try:
             today = datetime.now(UK_TZ).date()
-            start_date = today - timedelta(days=14)  # Past 14 days
+            tomorrow = today + timedelta(days=1)
 
             races = []
-            current_date = start_date
 
-            while current_date <= today:
-                date_str = current_date.strftime('%Y-%m-%d')
-                day_races = self.fetcher._fetch_races_for_date(date_str)
-                if day_races:
-                    races.extend(day_races)
-                    logger.info(f"Found {len(day_races)} races for {date_str}")
+            # Fetch today's races
+            today_str = today.strftime('%Y-%m-%d')
+            logger.info(f"📅 Fetching races for TODAY: {today_str}")
+            today_races = self.fetcher._fetch_races_for_date(today_str)
+            if today_races:
+                races.extend(today_races)
+                logger.info(f"✅ Found {len(today_races)} races for TODAY ({today_str})")
+            else:
+                logger.info(f"⚠️  No races found for today")
 
-                current_date += timedelta(days=1)
+            # Fetch tomorrow's races
+            tomorrow_str = tomorrow.strftime('%Y-%m-%d')
+            logger.info(f"📅 Fetching races for TOMORROW: {tomorrow_str}")
+            tomorrow_races = self.fetcher._fetch_races_for_date(tomorrow_str)
+            if tomorrow_races:
+                races.extend(tomorrow_races)
+                logger.info(f"✅ Found {len(tomorrow_races)} races for TOMORROW ({tomorrow_str})")
+            else:
+                logger.info(f"⚠️  No races found for tomorrow")
 
-            logger.info(f"Total races from past 14 days: {len(races)}")
+            logger.info(f"✅ Total upcoming races (today + tomorrow): {len(races)}")
             return races
 
         except Exception as e:

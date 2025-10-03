@@ -199,7 +199,7 @@ class LiveOddsFetcher:
 
         try:
             time.sleep(self.api_delay)
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(url, timeout=30)  # Increased from 10 to 30 seconds
 
             if response.status_code == 200:
                 data = response.json()
