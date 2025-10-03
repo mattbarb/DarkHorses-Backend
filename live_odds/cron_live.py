@@ -15,6 +15,7 @@ import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple
 import pytz
+from dateutil import parser as date_parser
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -90,24 +91,46 @@ class LiveOddsScheduler:
             logger.info("⚠️ Monitor server disabled (Render.com worker mode)")
 
     def get_upcoming_races(self) -> List[Dict]:
-        """Get races from past 14 days to today (to update odds for recent races)"""
+        """Get upcoming races (today + next 7 days) that have live odds available"""
         try:
             today = datetime.now(UK_TZ).date()
-            start_date = today - timedelta(days=14)  # Past 14 days
+            end_date = today + timedelta(days=7)  # Next 7 days
 
             races = []
-            current_date = start_date
+            current_date = today
 
-            while current_date <= today:
+            logger.info(f"📅 Fetching races from {today} to {end_date}...")
+
+            while current_date <= end_date:
                 date_str = current_date.strftime('%Y-%m-%d')
                 day_races = self.fetcher._fetch_races_for_date(date_str)
                 if day_races:
-                    races.extend(day_races)
-                    logger.info(f"Found {len(day_races)} races for {date_str}")
+                    # Filter to only races that haven't started yet (or just started)
+                    now = datetime.now(UK_TZ)
+                    upcoming = []
+                    for race in day_races:
+                        off_dt_str = race.get('off_dt')
+                        if off_dt_str:
+                            try:
+                                # Parse race time
+                                race_time = date_parser.parse(off_dt_str)
+                                # Include races that haven't finished (assume 10 min race duration)
+                                if race_time > now - timedelta(minutes=10):
+                                    upcoming.append(race)
+                            except:
+                                # If can't parse time, include it anyway
+                                upcoming.append(race)
+                        else:
+                            # No time info, include it
+                            upcoming.append(race)
+
+                    if upcoming:
+                        races.extend(upcoming)
+                        logger.info(f"  Found {len(upcoming)}/{len(day_races)} upcoming races for {date_str}")
 
                 current_date += timedelta(days=1)
 
-            logger.info(f"Total races from past 14 days: {len(races)}")
+            logger.info(f"📊 Total upcoming races: {len(races)}")
             return races
 
         except Exception as e:
