@@ -202,6 +202,7 @@ class LiveOddsScheduler:
         bookmakers_seen = set()
 
         logger.info(f"🔍 Starting to process {len(races)} races...")
+        logger.info(f"   (Only showing detailed logs for first 5 races, then every 10th race)")
 
         try:
             for race_idx, race in enumerate(races, 1):
@@ -212,7 +213,12 @@ class LiveOddsScheduler:
 
                 # Get runners for this race
                 runners = race.get('runners', [])
-                logger.info(f"  [{race_idx}/{len(races)}] Processing {race.get('course')} {race.get('off_time')} - {len(runners)} runners")
+
+                # Only log first 5 races and then every 10th for less noise
+                if race_idx <= 5 or race_idx % 10 == 0:
+                    logger.info(f"  [{race_idx}/{len(races)}] Processing {race.get('course')} {race.get('off_time')} - {len(runners)} runners")
+                elif race_idx % 50 == 0:
+                    logger.info(f"  ... processed {race_idx}/{len(races)} races so far ...")
 
                 for runner in runners:
                     horse_id = runner.get('horse_id')
@@ -223,11 +229,12 @@ class LiveOddsScheduler:
 
                     try:
                         # Fetch odds for this horse/race combination (returns list of OddsData objects)
-                        logger.debug(f"    📡 Fetching odds for {horse_name} ({horse_id})...")
                         odds_list = self.fetcher.fetch_live_odds(race_id, horse_id)
 
                         if odds_list:
-                            logger.debug(f"    ✅ Got {len(odds_list)} odds for {horse_name}")
+                            # Log first successful odds fetch
+                            if len(all_odds_records) == 0:
+                                logger.info(f"    ✅ FIRST ODDS FOUND! {horse_name}: {len(odds_list)} bookmakers")
                             # Convert OddsData objects to dict records for database
                             for odds in odds_list:
                                 record = {
@@ -347,15 +354,24 @@ class LiveOddsScheduler:
             logger.info(f"Found {len(races)} races to process")
 
             # Fetch and store odds
-            stats = self.fetch_and_store_odds(races)
+            logger.info(f"🔄 Starting to fetch and store odds for {len(races)} races...")
+            try:
+                stats = self.fetch_and_store_odds(races)
 
-            logger.info(
-                f"Fetch cycle complete: "
-                f"{stats['races_processed']} races, "
-                f"{stats['horses_processed']} horses, "
-                f"{stats['odds_stored']} odds stored, "
-                f"{stats['errors']} errors"
-            )
+                logger.info("")
+                logger.info("=" * 80)
+                logger.info("✅ FETCH CYCLE COMPLETE")
+                logger.info(f"   Races processed: {stats['races_processed']}")
+                logger.info(f"   Horses processed: {stats['horses_processed']}")
+                logger.info(f"   Odds stored: {stats['odds_stored']}")
+                logger.info(f"   Errors: {stats['errors']}")
+                logger.info("=" * 80)
+                logger.info("")
+            except Exception as e:
+                logger.error(f"❌ CRITICAL ERROR in fetch_and_store_odds: {e}")
+                import traceback
+                logger.error(f"Traceback:\n{traceback.format_exc()}")
+                stats = {'races_processed': 0, 'horses_processed': 0, 'odds_stored': 0, 'errors': 1}
 
             self.last_fetch = datetime.now(UK_TZ)
             self.consecutive_errors = 0
