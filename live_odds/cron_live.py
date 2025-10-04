@@ -23,6 +23,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from live_odds_fetcher import LiveOddsFetcher
 from live_odds_client import LiveOddsSupabaseClient
 
+# Import statistics updater
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'odds_statistics'))
+    from update_stats import update_statistics
+    STATS_ENABLED = True
+    logger.info("✅ Statistics updater imported successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ Statistics updater not available: {e}")
+    STATS_ENABLED = False
+    def update_statistics(*args, **kwargs):
+        pass
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -311,13 +323,6 @@ class LiveOddsScheduler:
                                     'bookmaker_type': odds.bookmaker_type,
                                     'odds_decimal': odds.odds_decimal,
                                     'odds_fractional': odds.odds_fractional,
-                                    'back_price': odds.back_price,
-                                    'lay_price': odds.lay_price,
-                                    'back_size': odds.back_size,
-                                    'lay_size': odds.lay_size,
-                                    'back_prices': odds.back_prices,
-                                    'lay_prices': odds.lay_prices,
-                                    'total_matched': odds.total_matched,
                                     'market_status': odds.market_status,
                                     'in_play': odds.in_play,
                                     'odds_timestamp': odds.odds_timestamp
@@ -462,6 +467,16 @@ class LiveOddsScheduler:
 
             self.last_fetch = datetime.now(UK_TZ)
             self.consecutive_errors = 0
+
+            # Update statistics after successful fetch cycle
+            if STATS_ENABLED and stats.get('odds_stored', 0) > 0:
+                logger.info("📊 Updating live odds statistics...")
+                try:
+                    update_statistics(table='live', save_to_file=True)
+                    logger.info("✅ Statistics updated successfully")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to update statistics: {e}")
+
             return True
 
         except Exception as e:

@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: darkhorses-racing-odds
+    runtime: python
+    plan: starter  # Requires always-on for background scheduler
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 start.py
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PORT
+        value: 8000
+    healthCheckPath: /health

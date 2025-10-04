@@ -29,6 +29,16 @@ from historical_odds_client import HistoricalOddsClient
 from backfill_historical import HistoricalBackfill
 from schema_mapping import SchemaMapper
 
+# Import statistics updater
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'odds_statistics'))
+    from update_stats import update_statistics
+    STATS_UPDATER_ENABLED = True
+except ImportError as e:
+    STATS_UPDATER_ENABLED = False
+    def update_statistics(*args, **kwargs):
+        pass
+
 # Setup logging FIRST (before using logger anywhere)
 logging.basicConfig(
     level=logging.INFO,
@@ -203,6 +213,16 @@ class HistoricalOddsScheduler:
                     odds_stored_today=total_stored
                 )
                 add_activity(f"Daily update: {total_stored} odds stored for {date_str}")
+
+            # Update statistics after daily fetch
+            if STATS_UPDATER_ENABLED and total_stored > 0:
+                logger.info("📊 Updating historical odds statistics...")
+                try:
+                    update_statistics(table='historical', save_to_file=True)
+                    logger.info("✅ Statistics updated successfully")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to update statistics: {e}")
+
             return True
 
         except Exception as e:
@@ -314,6 +334,15 @@ class HistoricalOddsScheduler:
                 add_activity(f"Completed cycle: {successful_dates} dates, {total_races} races, {total_odds} odds")
 
             logger.info(f"✅ Backfill cycle complete: {successful_dates} dates, {total_races} races, {total_odds} odds")
+
+            # Update statistics after successful backfill cycle
+            if STATS_UPDATER_ENABLED and total_odds > 0:
+                logger.info("📊 Updating historical odds statistics...")
+                try:
+                    update_statistics(table='historical', save_to_file=True)
+                    logger.info("✅ Statistics updated successfully")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to update statistics: {e}")
 
             return {
                 'dates_processed': successful_dates,

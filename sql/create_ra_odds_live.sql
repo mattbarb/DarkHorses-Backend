@@ -39,21 +39,12 @@ CREATE TABLE ra_odds_live (
 
     -- Bookmaker information
     bookmaker_name TEXT NOT NULL,
-    bookmaker_type TEXT, -- 'exchange' or 'fixed'
+    bookmaker_type TEXT DEFAULT 'fixed', -- Only 'fixed' bookmakers supported (no exchange data available)
     market_type TEXT DEFAULT 'WIN',
 
-    -- Odds data (current snapshot)
+    -- Odds data (current snapshot) - FIXED ODDS ONLY
     odds_decimal NUMERIC(10,3),
     odds_fractional TEXT,
-    back_price NUMERIC(10,3), -- For exchanges like Betfair
-    lay_price NUMERIC(10,3),  -- For exchanges
-    back_size NUMERIC(12,2),  -- Available to back
-    lay_size NUMERIC(12,2),   -- Available to lay
-
-    -- Market depth for exchanges
-    back_prices JSONB, -- Top 3 back prices [{price, size}]
-    lay_prices JSONB,  -- Top 3 lay prices
-    total_matched NUMERIC(15,2),
 
     -- Status
     market_status TEXT DEFAULT 'OPEN',

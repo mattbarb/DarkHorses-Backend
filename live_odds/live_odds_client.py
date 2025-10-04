@@ -192,18 +192,9 @@ class LiveOddsSupabaseClient:
                 'bookmaker_type': record.get('bookmaker_type'),
                 'market_type': 'WIN',  # Default to WIN market
 
-                # Odds data
+                # Odds data (fixed odds only)
                 'odds_decimal': record.get('odds_decimal'),
                 'odds_fractional': record.get('odds_fractional'),
-                'back_price': record.get('back_price'),
-                'lay_price': record.get('lay_price'),
-                'back_size': record.get('back_size'),
-                'lay_size': record.get('lay_size'),
-
-                # Market depth (JSON)
-                'back_prices': json.dumps(record.get('back_prices')) if record.get('back_prices') else None,
-                'lay_prices': json.dumps(record.get('lay_prices')) if record.get('lay_prices') else None,
-                'total_matched': record.get('total_matched'),
 
                 # Status
                 'market_status': record.get('market_status', 'OPEN'),

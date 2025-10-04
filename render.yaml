@@ -1,3 +1,11 @@
+# ⚠️ DEPRECATED - DO NOT USE THIS FILE
+# This configuration deploys separate microservices (3 workers = $21/month)
+#
+# USE INSTEAD: /api/render.yaml
+# The consolidated deployment runs everything in ONE service for $7/month
+#
+# See /api/README_CONSOLIDATED.md for modern deployment instructions
+
 services:
   # Historical Odds Service - Backfills from 2015 + Daily Updates
   - type: worker

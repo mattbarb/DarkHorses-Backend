@@ -56,6 +56,9 @@ temp/
 *.json
 data/
 
+# Notion config (local only, not pushed to server)
+notion_config/
+
 # Backup files
 *.bak
 *.backup

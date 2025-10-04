@@ -50,7 +50,7 @@ BOOKMAKER_MAPPING = {
 
 @dataclass
 class OddsData:
-    """Structure for odds data"""
+    """Structure for odds data - FIXED ODDS ONLY (no exchange data available)"""
     race_id: str
     horse_id: str
     bookmaker_id: str
@@ -58,13 +58,6 @@ class OddsData:
     bookmaker_type: str
     odds_decimal: Optional[float] = None
     odds_fractional: Optional[str] = None
-    back_price: Optional[float] = None
-    lay_price: Optional[float] = None
-    back_size: Optional[float] = None
-    lay_size: Optional[float] = None
-    back_prices: Optional[List] = None
-    lay_prices: Optional[List] = None
-    total_matched: Optional[float] = None
     market_status: str = 'OPEN'
     in_play: bool = False
     odds_timestamp: datetime = None
@@ -270,157 +263,10 @@ class LiveOddsFetcher:
 
         return odds_list
 
-    def _parse_odds_response(self, data: Dict, race_id: str, horse_id: str) -> List[OddsData]:
-        """Parse API response and extract odds from all bookmakers"""
-        odds_list = []
-        timestamp = datetime.now()
-
-        # Handle exchange odds (Betfair, Smarkets, etc.)
-        if 'exchange' in data:
-            for exchange_key, exchange_data in data['exchange'].items():
-                if exchange_data and isinstance(exchange_data, dict):
-                    bookmaker_info = BOOKMAKER_MAPPING.get(exchange_key.lower())
-                    if bookmaker_info:
-                        odds = self._parse_exchange_odds(
-                            exchange_data, race_id, horse_id,
-                            bookmaker_info, timestamp
-                        )
-                        if odds:
-                            odds_list.append(odds)
-                            self.stats['bookmakers_found'].add(bookmaker_info['id'])
-
-        # Handle fixed odds bookmakers
-        if 'bookmakers' in data:
-            for bookie_key, bookie_data in data['bookmakers'].items():
-                if bookie_data:
-                    bookmaker_info = BOOKMAKER_MAPPING.get(bookie_key.lower())
-                    if bookmaker_info:
-                        odds = self._parse_fixed_odds(
-                            bookie_data, race_id, horse_id,
-                            bookmaker_info, timestamp
-                        )
-                        if odds:
-                            odds_list.append(odds)
-                            self.stats['bookmakers_found'].add(bookmaker_info['id'])
-
-        # Also check for 'odds' key (some APIs use this)
-        if 'odds' in data:
-            odds_data = data['odds']
-            # Parse embedded bookmaker odds
-            if isinstance(odds_data, dict):
-                for key, value in odds_data.items():
-                    bookmaker_info = BOOKMAKER_MAPPING.get(key.lower())
-                    if bookmaker_info and value:
-                        if bookmaker_info['type'] == 'exchange':
-                            odds = self._parse_exchange_odds(
-                                value, race_id, horse_id,
-                                bookmaker_info, timestamp
-                            )
-                        else:
-                            odds = self._parse_fixed_odds(
-                                value, race_id, horse_id,
-                                bookmaker_info, timestamp
-                            )
-                        if odds:
-                            odds_list.append(odds)
-                            self.stats['bookmakers_found'].add(bookmaker_info['id'])
-
-        return odds_list
-
-    def _parse_exchange_odds(self, data: Dict, race_id: str, horse_id: str,
-                            bookmaker_info: Dict, timestamp: datetime) -> Optional[OddsData]:
-        """Parse exchange odds data"""
-        try:
-            odds = OddsData(
-                race_id=race_id,
-                horse_id=horse_id,
-                bookmaker_id=bookmaker_info['id'],
-                bookmaker_name=bookmaker_info['name'],
-                bookmaker_type='exchange',
-                odds_timestamp=timestamp
-            )
-
-            # Extract back/lay prices
-            if 'back' in data:
-                back_data = data['back']
-                if isinstance(back_data, list) and len(back_data) > 0:
-                    odds.back_price = float(back_data[0].get('price', 0))
-                    odds.back_size = float(back_data[0].get('size', 0))
-                    odds.back_prices = back_data[:3]  # Top 3 prices
-                elif isinstance(back_data, dict):
-                    odds.back_price = float(back_data.get('price', 0))
-                    odds.back_size = float(back_data.get('size', 0))
-
-            if 'lay' in data:
-                lay_data = data['lay']
-                if isinstance(lay_data, list) and len(lay_data) > 0:
-                    odds.lay_price = float(lay_data[0].get('price', 0))
-                    odds.lay_size = float(lay_data[0].get('size', 0))
-                    odds.lay_prices = lay_data[:3]  # Top 3 prices
-                elif isinstance(lay_data, dict):
-                    odds.lay_price = float(lay_data.get('price', 0))
-                    odds.lay_size = float(lay_data.get('size', 0))
-
-            # Total matched amount
-            if 'matched' in data:
-                odds.total_matched = float(data['matched'])
-
-            # Market status
-            if 'status' in data:
-                odds.market_status = data['status'].upper()
-            if 'in_play' in data:
-                odds.in_play = bool(data['in_play'])
-
-            return odds if (odds.back_price or odds.lay_price) else None
-
-        except Exception as e:
-            logger.error(f"Error parsing exchange odds: {e}")
-            return None
-
-    def _parse_fixed_odds(self, data: Any, race_id: str, horse_id: str,
-                         bookmaker_info: Dict, timestamp: datetime) -> Optional[OddsData]:
-        """Parse fixed odds bookmaker data"""
-        try:
-            odds = OddsData(
-                race_id=race_id,
-                horse_id=horse_id,
-                bookmaker_id=bookmaker_info['id'],
-                bookmaker_name=bookmaker_info['name'],
-                bookmaker_type='fixed',
-                odds_timestamp=timestamp
-            )
-
-            # Handle different data formats
-            if isinstance(data, (int, float)):
-                odds.odds_decimal = float(data)
-            elif isinstance(data, str):
-                # Could be fractional odds like "5/1"
-                odds.odds_fractional = data
-                odds.odds_decimal = self._fractional_to_decimal(data)
-            elif isinstance(data, dict):
-                # Complex odds object
-                if 'decimal' in data:
-                    odds.odds_decimal = float(data['decimal'])
-                elif 'price' in data:
-                    odds.odds_decimal = float(data['price'])
-                if 'fractional' in data:
-                    odds.odds_fractional = data['fractional']
-
-            return odds if odds.odds_decimal else None
-
-        except Exception as e:
-            logger.error(f"Error parsing fixed odds: {e}")
-            return None
-
-    def _fractional_to_decimal(self, fractional: str) -> Optional[float]:
-        """Convert fractional odds to decimal"""
-        try:
-            if '/' in fractional:
-                num, denom = fractional.split('/')
-                return 1 + (float(num) / float(denom))
-            return None
-        except:
-            return None
+    # NOTE: The methods below (_parse_odds_response, _parse_exchange_odds, _parse_fixed_odds)
+    # are DEPRECATED and not used in production. They were designed for the old /odds/{race_id}/{horse_id}
+    # endpoint which has been deprecated by Racing API. We now use parse_embedded_odds() to extract
+    # odds directly from the racecard response. These methods are kept for reference only.
 
     def fetch_all_live_odds(self, races: List[Dict]) -> Tuple[List[Dict], Dict]:
         """
