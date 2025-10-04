@@ -116,7 +116,16 @@ class LiveOddsSupabaseClient:
         logger.info(f"   Unique races: {len(self.stats['races'])}")
         logger.info(f"   Unique horses: {len(self.stats['horses'])}")
         logger.info(f"=" * 80)
-        return self.stats
+
+        # Return stats with counts
+        return {
+            'inserted': self.stats['inserted'],
+            'updated': self.stats['updated'],
+            'errors': self.stats['errors'],
+            'bookmakers': len(self.stats['bookmakers']),
+            'races': len(self.stats['races']),
+            'horses': len(self.stats['horses'])
+        }
 
     def _process_bookmaker_batch(self, bookmaker_id: str, records: List[Dict]):
         """Process odds for a specific bookmaker"""
