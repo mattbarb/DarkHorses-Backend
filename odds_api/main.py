@@ -415,6 +415,63 @@ def get_courses():
         raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
 
 
+@app.get("/api/historical-odds/summary")
+def get_historical_summary():
+    """
+    Get summary statistics for historical odds table
+    """
+    try:
+        # Get total count
+        count_result = supabase.table('rb_odds_historical')\
+            .select('id', count='exact')\
+            .limit(1)\
+            .execute()
+
+        total_count = count_result.count if hasattr(count_result, 'count') else 0
+
+        # Get date range
+        date_result = supabase.table('rb_odds_historical')\
+            .select('race_date')\
+            .order('race_date', desc=False)\
+            .limit(1)\
+            .execute()
+
+        earliest_date = date_result.data[0]['race_date'] if date_result.data else None
+
+        latest_result = supabase.table('rb_odds_historical')\
+            .select('race_date')\
+            .order('race_date', desc=True)\
+            .limit(1)\
+            .execute()
+
+        latest_date = latest_result.data[0]['race_date'] if latest_result.data else None
+
+        # Get unique races count (approximate)
+        races_result = supabase.table('rb_odds_historical')\
+            .select('race_id')\
+            .limit(10000)\
+            .execute()
+
+        unique_races = len(set([r['race_id'] for r in races_result.data])) if races_result.data else 0
+
+        return {
+            "success": True,
+            "total_records": total_count,
+            "earliest_date": earliest_date,
+            "latest_date": latest_date,
+            "unique_races_sample": unique_races,
+            "date_range": f"{earliest_date[:4] if earliest_date else '?'} - {latest_date[:4] if latest_date else '?'}"
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching historical summary: {str(e)}")
+        return {
+            "success": False,
+            "total_records": 0,
+            "message": f"Error: {str(e)}"
+        }
+
+
 @app.get("/api/live-odds/next-race")
 def get_next_race():
     """
