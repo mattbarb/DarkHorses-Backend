@@ -151,6 +151,22 @@ class LiveOddsSupabaseClient:
                 logger.error(f"Error processing batch for {bookmaker_id}: {e}")
                 self.stats['errors'] += len(batch)
 
+    def _sanitize_value(self, value, expected_type='str'):
+        """Sanitize a value for database insertion - convert empty strings to None"""
+        if value == '' or value is None:
+            return None
+        if expected_type == 'int':
+            try:
+                return int(value) if value else None
+            except (ValueError, TypeError):
+                return None
+        if expected_type == 'float':
+            try:
+                return float(value) if value else None
+            except (ValueError, TypeError):
+                return None
+        return value
+
     def _prepare_live_record(self, record: Dict) -> Optional[Dict]:
         """Prepare a record for the ra_odds_live table"""
         try:
@@ -161,40 +177,41 @@ class LiveOddsSupabaseClient:
 
             prepared = {
                 # Identifiers
-                'race_id': record.get('race_id'),
-                'horse_id': record.get('horse_id'),
-                'bookmaker_id': record.get('bookmaker_id'),
+                'race_id': self._sanitize_value(record.get('race_id')),
+                'horse_id': self._sanitize_value(record.get('horse_id')),
+                'bookmaker_id': self._sanitize_value(record.get('bookmaker_id')),
 
                 # Race metadata
-                'race_date': record.get('race_date'),
-                'race_time': record.get('race_time'),
-                'off_dt': record.get('off_dt'),
-                'course': record.get('course'),
-                'race_name': record.get('race_name'),
-                'race_class': record.get('race_class'),
-                'race_type': record.get('race_type'),
-                'distance': record.get('distance'),
-                'going': record.get('going'),
-                'runners': record.get('runners'),
+                'race_date': self._sanitize_value(record.get('race_date')),
+                'race_time': self._sanitize_value(record.get('race_time')),
+                'off_dt': self._sanitize_value(record.get('off_dt')),
+                'course': self._sanitize_value(record.get('course')),
+                'country': self._sanitize_value(record.get('country')),
+                'race_name': self._sanitize_value(record.get('race_name')),
+                'race_class': self._sanitize_value(record.get('race_class')),
+                'race_type': self._sanitize_value(record.get('race_type')),
+                'distance': self._sanitize_value(record.get('distance')),
+                'going': self._sanitize_value(record.get('going')),
+                'runners': self._sanitize_value(record.get('runners'), 'int'),
 
                 # Horse metadata
-                'horse_name': record.get('horse_name'),
-                'horse_number': record.get('horse_number'),
-                'jockey': record.get('jockey'),
-                'trainer': record.get('trainer'),
-                'draw': record.get('draw'),
-                'weight': record.get('weight'),
-                'age': record.get('age'),
-                'form': record.get('form'),
+                'horse_name': self._sanitize_value(record.get('horse_name')),
+                'horse_number': self._sanitize_value(record.get('horse_number'), 'int'),
+                'jockey': self._sanitize_value(record.get('jockey')),
+                'trainer': self._sanitize_value(record.get('trainer')),
+                'draw': self._sanitize_value(record.get('draw'), 'int'),
+                'weight': self._sanitize_value(record.get('weight')),
+                'age': self._sanitize_value(record.get('age'), 'int'),
+                'form': self._sanitize_value(record.get('form')),
 
                 # Bookmaker information
-                'bookmaker_name': record.get('bookmaker_name'),
-                'bookmaker_type': record.get('bookmaker_type'),
+                'bookmaker_name': self._sanitize_value(record.get('bookmaker_name')),
+                'bookmaker_type': self._sanitize_value(record.get('bookmaker_type')),
                 'market_type': 'WIN',  # Default to WIN market
 
                 # Odds data (fixed odds only)
-                'odds_decimal': record.get('odds_decimal'),
-                'odds_fractional': record.get('odds_fractional'),
+                'odds_decimal': self._sanitize_value(record.get('odds_decimal'), 'float'),
+                'odds_fractional': self._sanitize_value(record.get('odds_fractional')),
 
                 # Status
                 'market_status': record.get('market_status', 'OPEN'),
