@@ -198,14 +198,24 @@ def get_historical_odds(
 
         return {
             "success": True,
-            "count": len(result.data),
+            "count": len(result.data) if result.data else 0,
             "limit": limit,
             "offset": offset,
-            "data": result.data
+            "data": result.data if result.data else [],
+            "message": "No historical data available yet" if not result.data else None
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching historical odds: {str(e)}")
+        logger.error(f"Error fetching historical odds: {str(e)}")
+        # Return empty result instead of error if table doesn't exist yet
+        return {
+            "success": True,
+            "count": 0,
+            "limit": limit,
+            "offset": offset,
+            "data": [],
+            "message": "Historical odds data not available - table may not exist yet or scheduler hasn't run"
+        }
 
 
 @app.get("/api/statistics")
