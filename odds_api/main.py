@@ -143,7 +143,7 @@ def get_upcoming_races(
         tomorrow = today + timedelta(days=1)
 
         result = supabase.table('ra_odds_live')\
-            .select('race_id, race_date, race_time, course, country, race_name')\
+            .select('race_id, race_date, race_time, course, race_name')\
             .gte('race_date', str(today))\
             .lte('race_date', str(tomorrow))\
             .execute()
@@ -383,17 +383,16 @@ def get_courses():
     try:
         # Get unique courses from live odds
         result = supabase.table('ra_odds_live')\
-            .select('course, country')\
+            .select('course')\
             .execute()
 
         # Get unique courses
         courses = {}
         for record in result.data:
-            course = record['course']
+            course = record.get('course')
             if course and course not in courses:
                 courses[course] = {
-                    'name': course,
-                    'country': record['country']
+                    'name': course
                 }
 
         return {
