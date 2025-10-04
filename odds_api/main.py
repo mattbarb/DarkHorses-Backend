@@ -421,13 +421,35 @@ def get_historical_summary():
     Get summary statistics for historical odds table
     """
     try:
-        # Get total count
+        logger.info("Fetching historical odds summary...")
+
+        # Get total count - using proper supabase-py v2 syntax
         count_result = supabase.table('rb_odds_historical')\
-            .select('id', count='exact')\
+            .select('*', count='exact')\
             .limit(1)\
             .execute()
 
-        total_count = count_result.count if hasattr(count_result, 'count') else 0
+        # Log the response structure for debugging
+        logger.info(f"Count result type: {type(count_result)}")
+        logger.info(f"Count result attributes: {dir(count_result)}")
+
+        # Try different ways to access count
+        total_count = 0
+        if hasattr(count_result, 'count'):
+            total_count = count_result.count
+            logger.info(f"Got count from .count attribute: {total_count}")
+        elif hasattr(count_result, 'headers') and 'content-range' in count_result.headers:
+            # Parse from content-range header: "0-999/1234"
+            content_range = count_result.headers.get('content-range', '')
+            if '/' in content_range:
+                total_count = int(content_range.split('/')[-1])
+                logger.info(f"Got count from content-range header: {total_count}")
+        else:
+            # Fallback: count the data we get back
+            logger.warning("Could not find count, using data length as estimate")
+            total_count = len(count_result.data) if count_result.data else 0
+
+        logger.info(f"Final total_count: {total_count}")
 
         # Get date range
         date_result = supabase.table('rb_odds_historical')\
@@ -437,6 +459,7 @@ def get_historical_summary():
             .execute()
 
         earliest_date = date_result.data[0]['race_date'] if date_result.data else None
+        logger.info(f"Earliest date: {earliest_date}")
 
         latest_result = supabase.table('rb_odds_historical')\
             .select('race_date')\
@@ -445,14 +468,16 @@ def get_historical_summary():
             .execute()
 
         latest_date = latest_result.data[0]['race_date'] if latest_result.data else None
+        logger.info(f"Latest date: {latest_date}")
 
-        # Get unique races count (approximate)
+        # Get unique races count (approximate - sample first 10k)
         races_result = supabase.table('rb_odds_historical')\
             .select('race_id')\
             .limit(10000)\
             .execute()
 
         unique_races = len(set([r['race_id'] for r in races_result.data])) if races_result.data else 0
+        logger.info(f"Unique races (sample): {unique_races}")
 
         return {
             "success": True,
@@ -465,6 +490,8 @@ def get_historical_summary():
 
     except Exception as e:
         logger.error(f"Error fetching historical summary: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return {
             "success": False,
             "total_records": 0,
