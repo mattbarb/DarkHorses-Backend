@@ -16,6 +16,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from supabase import create_client, Client
 import json
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -50,6 +52,28 @@ if not supabase_url or not supabase_key:
     raise ValueError("Missing Supabase credentials in environment")
 
 supabase: Client = create_client(supabase_url, supabase_key)
+
+# Get DATABASE_URL for direct PostgreSQL queries
+database_url = os.getenv('DATABASE_URL')
+
+# Helper function for direct PostgreSQL count queries
+def get_direct_postgres_count(table_name: str) -> int:
+    """Get count using direct PostgreSQL connection (more reliable than Supabase count)"""
+    if not database_url:
+        logger.warning("DATABASE_URL not set, cannot use direct PostgreSQL queries")
+        return 0
+
+    try:
+        conn = psycopg2.connect(database_url)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+        count = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
+        return count
+    except Exception as e:
+        logger.error(f"Error getting direct PostgreSQL count: {e}")
+        return 0
 
 # Mount static files for UI
 static_dir = Path(__file__).parent / "static"
@@ -423,31 +447,31 @@ def get_historical_summary():
     try:
         logger.info("Fetching historical odds summary...")
 
-        # Get total count - using proper supabase-py v2 syntax
-        count_result = supabase.table('rb_odds_historical')\
-            .select('*', count='exact')\
-            .limit(1)\
-            .execute()
+        # Try direct PostgreSQL count first (most reliable)
+        total_count = get_direct_postgres_count('rb_odds_historical')
+        logger.info(f"Direct PostgreSQL count: {total_count}")
 
-        # Log the response structure for debugging
-        logger.info(f"Count result type: {type(count_result)}")
-        logger.info(f"Count result attributes: {dir(count_result)}")
+        # If direct count failed, try Supabase API
+        if total_count == 0:
+            logger.info("Direct count was 0, trying Supabase API...")
+            count_result = supabase.table('rb_odds_historical')\
+                .select('*', count='exact')\
+                .limit(1)\
+                .execute()
 
-        # Try different ways to access count
-        total_count = 0
-        if hasattr(count_result, 'count'):
-            total_count = count_result.count
-            logger.info(f"Got count from .count attribute: {total_count}")
-        elif hasattr(count_result, 'headers') and 'content-range' in count_result.headers:
-            # Parse from content-range header: "0-999/1234"
-            content_range = count_result.headers.get('content-range', '')
-            if '/' in content_range:
-                total_count = int(content_range.split('/')[-1])
-                logger.info(f"Got count from content-range header: {total_count}")
-        else:
-            # Fallback: count the data we get back
-            logger.warning("Could not find count, using data length as estimate")
-            total_count = len(count_result.data) if count_result.data else 0
+            # Log the response structure for debugging
+            logger.info(f"Count result type: {type(count_result)}")
+
+            # Try different ways to access count
+            if hasattr(count_result, 'count'):
+                total_count = count_result.count
+                logger.info(f"Got count from .count attribute: {total_count}")
+            elif hasattr(count_result, 'headers') and 'content-range' in count_result.headers:
+                # Parse from content-range header: "0-999/1234"
+                content_range = count_result.headers.get('content-range', '')
+                if '/' in content_range:
+                    total_count = int(content_range.split('/')[-1])
+                    logger.info(f"Got count from content-range header: {total_count}")
 
         logger.info(f"Final total_count: {total_count}")
 
