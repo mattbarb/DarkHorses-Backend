@@ -186,7 +186,6 @@ class LiveOddsSupabaseClient:
                 'race_time': self._sanitize_value(record.get('race_time')),
                 'off_dt': self._sanitize_value(record.get('off_dt')),
                 'course': self._sanitize_value(record.get('course')),
-                'country': self._sanitize_value(record.get('country')),
                 'race_name': self._sanitize_value(record.get('race_name')),
                 'race_class': self._sanitize_value(record.get('race_class')),
                 'race_type': self._sanitize_value(record.get('race_type')),
