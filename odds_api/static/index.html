@@ -441,17 +441,44 @@
         // Load historical odds stats
         async function loadHistoricalOddsStats() {
             try {
-                const response = await fetch(`${API_BASE}/api/historical-odds?limit=1`);
-                const data = await response.json();
+                // Try to get stats from statistics API first
+                const statsResponse = await fetch(`${API_BASE}/api/statistics?table=historical`);
+                const statsData = await statsResponse.json();
+
+                let totalRecords = 'N/A';
+                let dateRange = '2015 - Present';
+                let uniqueRaces = 'N/A';
+
+                if (statsData.data && statsData.data.historical && statsData.data.historical.rb_odds_historical) {
+                    const hist = statsData.data.historical.rb_odds_historical;
+                    totalRecords = formatNumber(hist.basic_metrics.total_records);
+                    if (hist.basic_metrics.earliest_race_date && hist.basic_metrics.latest_race_date) {
+                        const earliest = hist.basic_metrics.earliest_race_date.split('-')[0]; // Year
+                        const latest = hist.basic_metrics.latest_race_date.split('-')[0]; // Year
+                        dateRange = `${earliest} - ${latest}`;
+                    }
+                    uniqueRaces = formatNumber(hist.unique_entities.unique_races);
+                } else {
+                    // Fallback: query the table directly for a count estimate
+                    const countResponse = await fetch(`${API_BASE}/api/historical-odds?limit=1`);
+                    const countData = await countResponse.json();
+                    if (countData.count > 0) {
+                        totalRecords = 'Available';
+                    }
+                }
 
                 const html = `
                     <div class="stat-item">
-                        <span class="stat-label">Records Available</span>
-                        <span class="stat-value">${formatNumber(data.count)}+</span>
+                        <span class="stat-label">Total Records</span>
+                        <span class="stat-value">${totalRecords}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Unique Races</span>
+                        <span class="stat-value">${uniqueRaces}</span>
                     </div>
                     <div class="stat-item">
                         <span class="stat-label">Coverage</span>
-                        <span class="stat-value">2015 - Present</span>
+                        <span class="stat-value">${dateRange}</span>
                     </div>
                     <button class="refresh-btn" onclick="viewHistoricalOdds()">View Historical Data</button>
                 `;
