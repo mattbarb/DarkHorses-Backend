@@ -12,8 +12,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 from pathlib import Path
 
-from live_odds_fetcher import LiveOddsFetcher
-from live_odds_client import LiveOddsSupabaseClient
+from .live_odds_fetcher import LiveOddsFetcher
+from .live_odds_client import LiveOddsSupabaseClient
 
 # Load environment - optional for Render.com
 env_file = Path(__file__).parent / '.env'

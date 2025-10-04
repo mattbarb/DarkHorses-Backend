@@ -4,43 +4,43 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DarkHorses Racing Odds Backend is a comprehensive horse racing odds collection system that fetches data from The Racing API and stores it in Supabase. The system has evolved into a consolidated all-in-one architecture that runs API, schedulers, and statistics tracking in a single process.
+DarkHorses Odds API is a comprehensive horse racing odds collection system that fetches data from The Racing API and stores it in Supabase. The system runs as a unified Odds API with all components consolidated into a single process.
 
 ## System Architecture
 
-### Consolidated Deployment Model (ONE Service Architecture)
+### Unified Odds API Architecture
 
-**IMPORTANT**: This system runs as ONE Render.com web service, not separate microservices.
+**IMPORTANT**: This system runs as ONE Render.com web service - the **Odds API**.
 
-The modern architecture consolidates everything into a single process via `api/start.py`:
+All components are organized under the `odds_api/` directory:
 
 ```
-api/
+odds_api/
 ├── start.py              # Main entry - runs API + scheduler together
 ├── main.py               # FastAPI app + dashboard UI
 ├── scheduler.py          # Background worker for all data collection
-├── static/index.html     # Dashboard UI
-├── render.yaml           # ONE service deployment config
-└── logs/                 # All service logs
+├── static/               # Dashboard UI assets
+├── logs/                 # All service logs
+├── live_odds/            # Real-time odds collection module
+│   ├── cron_live.py
+│   ├── live_odds_fetcher.py
+│   └── live_odds_client.py
+├── historical_odds/      # Historical backfill module
+│   ├── cron_historical.py
+│   ├── historical_odds_fetcher.py
+│   └── historical_odds_client.py
+└── odds_statistics/      # Statistics tracking module
+    ├── update_stats.py
+    └── database.py
 ```
 
-**Key principle**: ONE process handles everything:
+**Key principle**: ONE process, ONE service, ONE deployment:
 - FastAPI server (API + Dashboard UI)
 - Live odds collection (every 5 min)
 - Historical backfill (daily 1 AM)
 - Statistics updates (every 10 min)
 
-**Cost savings**: $7/month for ONE service instead of $21/month for three separate workers.
-
-### Legacy Microservices (Still Functional)
-
-The original microservices architecture is maintained for backwards compatibility:
-
-- `live_odds/` - Real-time odds collection with adaptive scheduling
-- `historical_odds/` - Historical backfill from 2015 + daily updates
-- `odds_statistics/` - Statistics tracking and reporting
-
-These can run independently but are now integrated into the consolidated scheduler.
+**Cost savings**: $7/month for ONE unified service instead of $21/month for three separate workers.
 
 ### Database Architecture
 
@@ -75,37 +75,37 @@ JSON Output (odds_statistics/output/*.json)
 
 ## Running the System
 
-### Consolidated System (Recommended)
+### Unified Odds API (Recommended)
 
 ```bash
-# Single command runs everything
-cd api
+# Single command runs the complete Odds API
+cd odds_api
 python3 start.py
 
 # Access dashboard at http://localhost:8000
 # API docs at http://localhost:8000/docs
 ```
 
-This starts:
+This starts the complete Odds API:
 - FastAPI server (API + UI)
 - Live odds scheduler (every 5 min)
 - Historical odds scheduler (daily 1 AM)
 - Statistics updater (every 10 min)
 
-### Individual Services (Legacy)
+### Individual Modules (Development/Testing)
 
 ```bash
 # Live odds only
-cd live_odds
+cd odds_api/live_odds
 python3 cron_live.py
 
 # Historical odds only
-cd historical_odds
+cd odds_api/historical_odds
 python3 cron_historical.py
 
 # Statistics only
-cd odds_statistics
-python3 stats_tracker.py
+cd odds_api/odds_statistics
+python3 update_stats.py --table all
 ```
 
 ## Key Implementation Details
@@ -196,19 +196,20 @@ Also triggered automatically after successful fetch cycles in both live and hist
 
 ## Deployment
 
-### Render.com - ONE Worker Deployment (Production)
+### Render.com - Unified Odds API Deployment (Production)
 
-**Architecture**: ONE Render.com web service runs everything in a single process.
+**Architecture**: ONE Render.com web service runs the complete Odds API.
 
 ```bash
 # Service Configuration:
+Service Name: darkhorses-odds-api
 Service Type: Web Service
-Root Directory: api
-Build Command: pip install -r requirements.txt
+Root Directory: odds_api
+Build Command: pip install -r ../requirements.txt
 Start Command: python3 start.py
 
-# This ONE command starts:
-# 1. FastAPI server (API + Dashboard UI)
+# This ONE service provides:
+# 1. Complete Odds API (FastAPI server + Dashboard UI)
 # 2. Live odds scheduler (every 5 min)
 # 3. Historical odds scheduler (daily 1 AM)
 # 4. Statistics updater (every 10 min)
@@ -281,7 +282,7 @@ MONITOR_ENABLED=false  # Set to true for monitoring server
 **Common causes**:
 1. Free tier selected (needs Starter for always-on scheduler)
 2. Missing environment variables
-3. Root directory not set to `api` for consolidated deployment
+3. Root directory not set to `odds_api` in render.yaml
 4. Using `uvicorn main:app` instead of `python3 start.py`
 
 ## Testing
@@ -330,34 +331,38 @@ AND column_name LIKE '%back%' OR column_name LIKE '%lay%';
 
 ## Important Files Reference
 
-### Core System Files
-- `api/start.py` - Main entry point for consolidated system
-- `api/main.py` - FastAPI application with all endpoints
-- `api/scheduler.py` - Background worker running all schedulers
-- `api/static/index.html` - Dashboard UI
+### Core Odds API Files
+- `odds_api/start.py` - Main entry point for Odds API
+- `odds_api/main.py` - FastAPI application with all endpoints
+- `odds_api/scheduler.py` - Background worker running all schedulers
+- `odds_api/static/index.html` - Dashboard UI
 
-### Legacy Schedulers (Integrated)
-- `live_odds/cron_live.py` - Live odds scheduler (lines 122, 271 are critical)
-- `historical_odds/cron_historical.py` - Historical odds scheduler
-- `odds_statistics/update_stats.py` - Statistics updater module
+### Live Odds Module
+- `odds_api/live_odds/cron_live.py` - Live odds scheduler (lines 122, 271 are critical)
+- `odds_api/live_odds/live_odds_fetcher.py` - Parses embedded odds from Racing API
+- `odds_api/live_odds/live_odds_client.py` - Supabase upsert operations
 
-### Data Access Layer
-- `live_odds/live_odds_fetcher.py` - Parses embedded odds from Racing API
-- `live_odds/live_odds_client.py` - Supabase upsert operations
-- `odds_statistics/database.py` - Direct PostgreSQL for statistics queries
+### Historical Odds Module
+- `odds_api/historical_odds/cron_historical.py` - Historical odds scheduler
+- `odds_api/historical_odds/historical_odds_fetcher.py` - Fetches historical data
+- `odds_api/historical_odds/historical_odds_client.py` - Supabase client
+
+### Statistics Module
+- `odds_api/odds_statistics/update_stats.py` - Statistics updater
+- `odds_api/odds_statistics/database.py` - Direct PostgreSQL for statistics queries
 
 ### Schema and Configuration
 - `sql/create_ra_odds_live.sql` - Live odds table schema (31 columns)
 - `sql/create_rb_odds_historical.sql` - Historical odds table schema
 - `sql/migrate_remove_exchange_columns.sql` - Exchange columns removal migration
-- `api/render.yaml` - Render.com deployment configuration
+- `render.yaml` - Render.com deployment configuration
 
 ## Development Workflow
 
 1. **Make changes** to any component (API, scheduler, fetcher, etc.)
-2. **Test locally** with `python3 api/start.py`
+2. **Test locally** with `cd odds_api && python3 start.py`
 3. **Verify** data flow: Racing API → Parser → Database → Statistics → API
-4. **Check logs** in `api/logs/scheduler.log` for errors
+4. **Check logs** in `odds_api/logs/scheduler.log` for errors
 5. **Deploy** by pushing to GitHub (Render auto-deploys)
 
 ## Performance Notes

@@ -1,12 +1,13 @@
-# Consolidated ONE Service Architecture
+# DarkHorses Odds API - Consolidated ONE Service Architecture
 # Runs API + All Schedulers in ONE process for $7/month (not $21/month)
 
 services:
   - type: web
-    name: darkhorses-racing-odds
+    name: darkhorses-odds-api
     env: python
+    rootDir: odds_api
     plan: starter  # Requires always-on for background scheduler
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r ../requirements.txt
     startCommand: python3 start.py
     envVars:
       - key: RACING_API_USERNAME

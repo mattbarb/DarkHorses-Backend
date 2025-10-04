@@ -12,7 +12,7 @@ from typing import List, Dict, Optional
 from pathlib import Path
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from schema_mapping import SchemaMapper
+from .schema_mapping import SchemaMapper
 
 # Load environment variables - optional for Render.com
 env_file = Path(__file__).parent / '.env'

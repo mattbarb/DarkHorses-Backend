@@ -17,11 +17,8 @@ from typing import List, Dict, Tuple
 import pytz
 from dateutil import parser as date_parser
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from live_odds_fetcher import LiveOddsFetcher
-from live_odds_client import LiveOddsSupabaseClient
+from .live_odds_fetcher import LiveOddsFetcher
+from .live_odds_client import LiveOddsSupabaseClient
 
 # Setup logging first (before using logger)
 logging.basicConfig(
@@ -36,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 # Import statistics updater
 try:
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'odds_statistics'))
-    from update_stats import update_statistics
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+    from odds_statistics.update_stats import update_statistics
     STATS_ENABLED = True
     logger.info("✅ Statistics updater imported successfully")
 except ImportError as e:

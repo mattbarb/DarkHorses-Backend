@@ -21,18 +21,15 @@ import pytz
 from typing import Optional, Dict
 from pathlib import Path
 
-# Add current directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from historical_odds_fetcher import HistoricalOddsFetcher
-from historical_odds_client import HistoricalOddsClient
-from backfill_historical import HistoricalBackfill
-from schema_mapping import SchemaMapper
+from .historical_odds_fetcher import HistoricalOddsFetcher
+from .historical_odds_client import HistoricalOddsClient
+from .backfill_historical import HistoricalBackfill
+from .schema_mapping import SchemaMapper
 
 # Import statistics updater
 try:
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'odds_statistics'))
-    from update_stats import update_statistics
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+    from odds_statistics.update_stats import update_statistics
     STATS_UPDATER_ENABLED = True
 except ImportError as e:
     STATS_UPDATER_ENABLED = False

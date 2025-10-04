@@ -15,11 +15,8 @@ from typing import List, Tuple
 import argparse
 from dotenv import load_dotenv
 
-# Add parent directory to path
-sys.path.append(str(Path(__file__).parent.parent))
-
-from historical_odds_fetcher import HistoricalOddsFetcher
-from historical_odds_client import HistoricalOddsClient
+from .historical_odds_fetcher import HistoricalOddsFetcher
+from .historical_odds_client import HistoricalOddsClient
 
 # Setup logging
 logging.basicConfig(

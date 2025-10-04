@@ -13,9 +13,6 @@ from datetime import datetime, time as dt_time
 from pathlib import Path
 import schedule
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 # Import scheduler modules
 from live_odds.cron_live import LiveOddsScheduler
 from historical_odds.cron_historical import HistoricalOddsScheduler

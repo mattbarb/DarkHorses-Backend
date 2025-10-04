@@ -13,8 +13,8 @@ from typing import List, Dict
 # Load environment
 load_dotenv(Path(__file__).parent / '.env')
 
-from live_odds_client import LiveOddsSupabaseClient
-from live_odds_fetcher import BOOKMAKER_MAPPING
+from .live_odds_client import LiveOddsSupabaseClient
+from .live_odds_fetcher import BOOKMAKER_MAPPING
 
 
 def list_bookmakers():
