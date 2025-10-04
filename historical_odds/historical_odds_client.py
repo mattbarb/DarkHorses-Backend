@@ -71,14 +71,31 @@ class HistoricalOddsClient:
         try:
             logger.info(f"🔌 Connecting to Supabase at {self.supabase_url}")
             logger.info(f"   Table: {self.table_name}")
+
+            # Test query
             response = self.client.table(self.table_name).select('racing_bet_data_id').limit(1).execute()
+
+            # Check response
+            logger.info(f"   Test query response:")
+            logger.info(f"     Status: {response.status_code if hasattr(response, 'status_code') else 'N/A'}")
+            logger.info(f"     Has data: {bool(response.data)}")
+            logger.info(f"     Data type: {type(response.data)}")
+
+            # Check if response contains error
+            if hasattr(response, 'error') and response.error:
+                logger.error(f"❌ Test query returned error: {response.error}")
+                raise RuntimeError(f"Supabase query error: {response.error}")
+
             logger.info("✅ Database connection verified successfully")
-            logger.info(f"   Service key: {'configured' if self.supabase_key else 'NOT configured'}")
+            logger.info(f"   Service key: {'configured (' + str(len(self.supabase_key)) + ' chars)' if self.supabase_key else 'NOT configured'}")
             return True
         except Exception as e:
             logger.error(f"❌ DATABASE CONNECTION FAILED: {e}")
+            logger.error(f"   Error type: {type(e).__name__}")
             logger.error(f"   Supabase URL: {os.getenv('SUPABASE_URL', 'NOT SET')}")
             logger.error(f"   Service key configured: {'Yes' if os.getenv('SUPABASE_SERVICE_KEY') else 'No'}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             raise RuntimeError(f"Cannot connect to Supabase database: {e}")
 
     def check_exists(self, date_of_race: str, track: str, race_time: str, horse_name: str) -> Optional[int]:
