@@ -43,7 +43,7 @@ class ConsolidatedScheduler:
         try:
             logger.info("🏇 Starting live odds fetch cycle...")
             self.live_scheduler = LiveOddsScheduler()
-            self.live_scheduler.run()
+            self.live_scheduler.run_fetch_cycle()
             logger.info("✅ Live odds fetch cycle completed")
         except Exception as e:
             logger.error(f"❌ Live odds fetch failed: {e}")
@@ -53,7 +53,7 @@ class ConsolidatedScheduler:
         try:
             logger.info("📚 Starting historical odds daily fetch...")
             self.historical_scheduler = HistoricalOddsScheduler()
-            self.historical_scheduler.run_daily_fetch()
+            self.historical_scheduler.run_daily_job()
             logger.info("✅ Historical odds daily fetch completed")
         except Exception as e:
             logger.error(f"❌ Historical odds fetch failed: {e}")
@@ -65,7 +65,9 @@ class ConsolidatedScheduler:
             update_all_statistics(save_to_file=True)
             logger.info("✅ Statistics updated successfully")
         except Exception as e:
-            logger.error(f"❌ Statistics update failed: {e}")
+            logger.warning(f"⚠️  Statistics update failed (non-critical): {e}")
+            if "Network is unreachable" in str(e):
+                logger.warning("💡 Hint: Render.com may not support IPv6. Consider using Supabase SDK for statistics.")
 
     def setup_schedules(self):
         """Configure all scheduled tasks"""
