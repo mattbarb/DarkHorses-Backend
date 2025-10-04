@@ -5,6 +5,8 @@ Note: This module uses direct PostgreSQL connection for complex aggregation quer
 The main data pipeline (live_odds, historical_odds) uses Supabase client for write operations.
 """
 import logging
+import socket
+import re
 from typing import List, Dict, Optional, Tuple
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -16,8 +18,41 @@ class DatabaseConnection:
     """Manages PostgreSQL database connections for read-only statistics queries"""
 
     def __init__(self, connection_string: str):
-        self.connection_string = connection_string
+        self.connection_string = self._force_ipv4_connection(connection_string)
         self.connection = None
+
+    def _force_ipv4_connection(self, connection_string: str) -> str:
+        """
+        Force IPv4 connection by resolving hostname to IPv4 address.
+        This fixes the Render.com IPv6 issue.
+        """
+        try:
+            # Extract hostname from connection string
+            # Format: postgresql://user:pass@hostname:port/database
+            match = re.search(r'@([^:/?]+)', connection_string)
+            if match:
+                hostname = match.group(1)
+                logger.info(f"Resolving {hostname} to IPv4...")
+
+                # Resolve to IPv4 only (socket.AF_INET)
+                addr_info = socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_STREAM)
+                if addr_info:
+                    ipv4_address = addr_info[0][4][0]
+                    logger.info(f"✅ Resolved {hostname} → {ipv4_address} (IPv4)")
+
+                    # Replace hostname with IPv4 address in connection string
+                    return connection_string.replace(hostname, ipv4_address)
+                else:
+                    logger.warning(f"No IPv4 address found for {hostname}")
+
+            return connection_string
+
+        except socket.gaierror as e:
+            logger.warning(f"DNS resolution failed for hostname, will try direct connection: {e}")
+            return connection_string
+        except Exception as e:
+            logger.warning(f"Could not force IPv4, using original connection string: {e}")
+            return connection_string
 
     def connect(self) -> psycopg2.extensions.connection:
         """Establish database connection"""

@@ -65,9 +65,7 @@ class ConsolidatedScheduler:
             update_all_statistics(save_to_file=True)
             logger.info("✅ Statistics updated successfully")
         except Exception as e:
-            logger.warning(f"⚠️  Statistics update failed (non-critical): {e}")
-            if "Network is unreachable" in str(e):
-                logger.warning("💡 Hint: Render.com may not support IPv6. Consider using Supabase SDK for statistics.")
+            logger.error(f"❌ Statistics update failed: {e}")
 
     def setup_schedules(self):
         """Configure all scheduled tasks"""
