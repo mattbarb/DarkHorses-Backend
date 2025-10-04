@@ -4,8 +4,8 @@
 services:
   - type: web
     name: darkhorses-racing-odds
-    runtime: python
-    rootDirectory: api
+    env: python
+    rootDir: api
     plan: starter  # Requires always-on for background scheduler
     buildCommand: pip install -r requirements.txt
     startCommand: python3 start.py
