@@ -282,16 +282,23 @@ def get_scheduler_status():
         "schedulers": {
             "live_odds": {
                 "name": "Live Odds Fetcher",
-                "schedule": "Every 5 minutes",
-                "description": "Fetches live odds for today and tomorrow's races",
+                "schedule": "ADAPTIVE (10s-15min based on race proximity)",
+                "description": "Fetches live odds for today and tomorrow's races with smart scheduling",
                 "details": {
-                    "frequency": "5 minutes default",
+                    "adaptive_intervals": {
+                        "imminent": "10 seconds (race <5 min away)",
+                        "soon": "60 seconds (race <30 min away)",
+                        "upcoming": "5 minutes (race <2 hours away)",
+                        "default": "15 minutes (checking for races)"
+                    },
                     "coverage": "Today + Tomorrow (GB & IRE races)",
                     "stop_updating": "When race starts",
                     "tables": ["ra_odds_live"]
                 },
                 "last_run": live_status.get("live_odds", {}).get("last_run"),
                 "last_success": live_status.get("live_odds", {}).get("last_success"),
+                "next_check": live_status.get("live_odds", {}).get("next_check"),
+                "next_interval": live_status.get("live_odds", {}).get("next_interval"),
                 "status": live_status.get("live_odds", {}).get("status", "unknown")
             },
             "historical_odds": {

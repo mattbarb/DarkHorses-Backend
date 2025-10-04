@@ -295,16 +295,31 @@
                 const response = await fetch(`${API_BASE}/api/scheduler-status`);
                 const data = await response.json();
 
-                const html = `
+                let liveOddsHtml = `
                     <div class="schedule-item">
-                        <h4>🏇 Live Odds Fetcher</h4>
+                        <h4>🏇 Live Odds Fetcher (ADAPTIVE)</h4>
                         <div class="schedule-time">⏰ ${data.schedulers.live_odds.schedule}</div>
-                        <div class="schedule-time">📍 ${data.schedulers.live_odds.details.coverage}</div>
+                        <div class="schedule-time">📍 ${data.schedulers.live_odds.details.coverage}</div>`;
+
+                // Show next check info if available
+                if (data.schedulers.live_odds.next_check) {
+                    const interval = data.schedulers.live_odds.next_interval;
+                    let intervalText = interval ? `${interval}s` : 'calculating...';
+                    if (interval >= 60) intervalText = `${Math.floor(interval/60)}m`;
+                    liveOddsHtml += `
+                        <div class="schedule-time" style="background: #e7f3ff; padding: 5px; margin-top: 5px; border-radius: 3px;">
+                            🎯 Next: ${intervalText} - ${data.schedulers.live_odds.next_check}
+                        </div>`;
+                }
+
+                liveOddsHtml += `
                         <div class="schedule-time">
                             ✅ Last Success: ${timeAgo(data.schedulers.live_odds.last_success)}
                         </div>
                         ${getStatusBadge(data.schedulers.live_odds.status)}
-                    </div>
+                    </div>`;
+
+                const html = liveOddsHtml + `
                     <div class="schedule-item">
                         <h4>📚 Historical Odds Fetcher</h4>
                         <div class="schedule-time">⏰ ${data.schedulers.historical_odds.schedule}</div>

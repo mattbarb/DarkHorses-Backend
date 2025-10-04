@@ -67,25 +67,41 @@ class ConsolidatedScheduler:
             logger.error(f"Could not save status file: {e}")
 
     def run_live_odds(self):
-        """Run live odds fetch cycle"""
+        """Run live odds fetch cycle and return next interval"""
         self.status["live_odds"]["last_run"] = datetime.now().isoformat()
         self.status["live_odds"]["status"] = "running"
         self._save_status()
 
         try:
             logger.info("🏇 Starting live odds fetch cycle...")
-            self.live_scheduler = LiveOddsScheduler()
+            if not self.live_scheduler:
+                self.live_scheduler = LiveOddsScheduler()
+
+            # Run fetch cycle
             self.live_scheduler.run_fetch_cycle()
+
+            # Get next optimal interval based on race proximity
+            races = self.live_scheduler.get_upcoming_races()
+            next_interval_seconds, reason = self.live_scheduler.get_optimal_interval(races)
+
             logger.info("✅ Live odds fetch cycle completed")
+            logger.info(f"⏱️  Next check in {next_interval_seconds}s - {reason}")
 
             self.status["live_odds"]["last_success"] = datetime.now().isoformat()
             self.status["live_odds"]["status"] = "success"
+            self.status["live_odds"]["next_check"] = reason
+            self.status["live_odds"]["next_interval"] = next_interval_seconds
             self._save_status()
+
+            return next_interval_seconds
+
         except Exception as e:
             logger.error(f"❌ Live odds fetch failed: {e}")
             self.status["live_odds"]["status"] = "failed"
             self.status["live_odds"]["error"] = str(e)
             self._save_status()
+            # Return default interval on error
+            return 300  # 5 minutes
 
     def run_historical_odds(self):
         """Run historical odds daily fetch"""
@@ -131,17 +147,20 @@ class ConsolidatedScheduler:
     def setup_schedules(self):
         """Configure all scheduled tasks"""
 
-        # Live odds - every 5 minutes
-        schedule.every(5).minutes.do(self.run_live_odds)
-        logger.info("📅 Scheduled: Live odds every 5 minutes")
-
         # Historical odds - daily at 1:00 AM UK time
         schedule.every().day.at("01:00").do(self.run_historical_odds)
         logger.info("📅 Scheduled: Historical odds daily at 1:00 AM")
 
-        # Statistics - every 10 minutes (after live odds cycles)
+        # Statistics - every 10 minutes
         schedule.every(10).minutes.do(self.run_statistics_update)
         logger.info("📅 Scheduled: Statistics update every 10 minutes")
+
+        # Note: Live odds uses adaptive scheduling in run() method
+        logger.info("📅 Scheduled: Live odds with adaptive intervals")
+        logger.info("   - 10s when race imminent (<5 min)")
+        logger.info("   - 60s when race soon (<30 min)")
+        logger.info("   - 5 min when race upcoming (<2 hours)")
+        logger.info("   - 15 min default check interval")
 
         # Run initial fetch on startup
         logger.info("🚀 Running initial fetch on startup...")
@@ -149,25 +168,43 @@ class ConsolidatedScheduler:
         self.run_statistics_update()
 
     def run(self):
-        """Start the scheduler loop"""
+        """Start the scheduler loop with adaptive live odds scheduling"""
         self.running = True
         self.setup_schedules()
 
         logger.info("✅ Consolidated scheduler started successfully")
         logger.info("📋 Active schedules:")
-        logger.info("   - Live odds: Every 5 minutes")
+        logger.info("   - Live odds: ADAPTIVE (10s-15min based on race proximity)")
         logger.info("   - Historical odds: Daily at 1:00 AM UK time")
         logger.info("   - Statistics: Every 10 minutes")
 
+        # Track next live odds check time
+        next_live_check = datetime.now()
+
         while self.running:
             try:
+                # Run fixed schedules (historical, statistics)
                 schedule.run_pending()
+
+                # Handle adaptive live odds scheduling
+                now = datetime.now()
+                if now >= next_live_check:
+                    # Run live odds and get next interval
+                    next_interval_seconds = self.run_live_odds()
+
+                    # Schedule next check
+                    next_live_check = now + timedelta(seconds=next_interval_seconds)
+                    logger.info(f"📅 Next live odds check at: {next_live_check.strftime('%H:%M:%S')}")
+
                 time.sleep(1)
+
             except KeyboardInterrupt:
                 logger.info("⏹️  Scheduler stopped by user")
                 self.running = False
             except Exception as e:
                 logger.error(f"❌ Scheduler error: {e}")
+                # On error, try again in 5 minutes
+                next_live_check = datetime.now() + timedelta(minutes=5)
                 time.sleep(5)
 
     def stop(self):
