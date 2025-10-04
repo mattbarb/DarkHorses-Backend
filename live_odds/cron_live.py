@@ -91,10 +91,10 @@ class LiveOddsScheduler:
             logger.info("⚠️ Monitor server disabled (Render.com worker mode)")
 
     def get_upcoming_races(self, limit_races: int = None) -> List[Dict]:
-        """Get upcoming races (today + next 7 days) that have live odds available"""
+        """Get upcoming races for today and tomorrow to collect odds data throughout the day"""
         try:
             today = datetime.now(UK_TZ).date()
-            end_date = today + timedelta(days=7)  # Next 7 days
+            end_date = today + timedelta(days=1)  # Today + tomorrow
 
             races = []
             current_date = today
@@ -116,10 +116,10 @@ class LiveOddsScheduler:
                             try:
                                 # Parse race time
                                 race_time = date_parser.parse(off_dt_str)
-                                # Only include races within next 3 hours (live odds available)
-                                # or races that just finished (within last 10 minutes)
+                                # Include all upcoming races for today/tomorrow
+                                # Only exclude races that have already started
                                 time_until_race = (race_time - now).total_seconds() / 60  # minutes
-                                if -10 <= time_until_race <= 180:  # -10 to +180 minutes
+                                if time_until_race >= 0:  # No upper limit - collect odds all day
                                     upcoming.append(race)
                             except:
                                 # If can't parse time, include it anyway
@@ -130,9 +130,9 @@ class LiveOddsScheduler:
 
                     if upcoming:
                         races.extend(upcoming)
-                        logger.info(f"  Found {len(upcoming)}/{len(day_races)} races within 3 hours for {date_str}")
+                        logger.info(f"  Found {len(upcoming)}/{len(day_races)} upcoming races for {date_str}")
                     elif day_races:
-                        logger.info(f"  Skipped {len(day_races)} races for {date_str} (all >3 hours away)")
+                        logger.info(f"  Skipped {len(day_races)} races for {date_str} (all finished)")
 
                 # Check if we've hit the limit
                 if limit_races and len(races) >= limit_races:
@@ -177,8 +177,8 @@ class LiveOddsScheduler:
 
             minutes_until = self.calculate_minutes_until_race(off_dt)
 
-            # Skip races that have already started
-            if minutes_until < -10:  # 10 min grace period
+            # Skip races that have already started (stop updating once race begins)
+            if minutes_until < 0:  # Race has started
                 continue
 
             if minutes_until < min_minutes:
