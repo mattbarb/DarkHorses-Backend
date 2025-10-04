@@ -194,31 +194,81 @@ class LiveOddsFetcher:
             return []
 
     def fetch_live_odds(self, race_id: str, horse_id: str) -> List[OddsData]:
-        """Fetch live odds for a specific horse from all bookmakers"""
-        url = f"{self.base_url}/odds/{race_id}/{horse_id}"
+        """
+        DEPRECATED: This endpoint no longer works (returns 404)
+        Use parse_embedded_odds() instead to get odds from racecards response
+        """
+        logger.warning(f"fetch_live_odds() is deprecated - odds should be parsed from racecards")
+        return []
 
-        try:
-            time.sleep(self.api_delay)
-            response = self.session.get(url, timeout=10)
+    def parse_embedded_odds(self, runner: Dict, race_id: str) -> List[OddsData]:
+        """
+        Parse odds from embedded pre_race_odds array in racecard runner data
 
-            if response.status_code == 200:
-                data = response.json()
-                odds_list = self._parse_odds_response(data, race_id, horse_id)
-                if not odds_list:
-                    logger.debug(f"      ⚠️  API returned 200 but no odds parsed for {race_id}/{horse_id}")
-                    logger.debug(f"      Response keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
-                return odds_list
-            elif response.status_code == 404:
-                logger.debug(f"      ℹ️  No odds available (404) for {race_id}/{horse_id}")
-                return []  # No odds available
-            else:
-                logger.warning(f"      ⚠️  API returned {response.status_code} for {race_id}/{horse_id}")
-                return []
+        Args:
+            runner: Runner dict from racecard response containing 'pre_race_odds'
+            race_id: Race identifier
 
-        except Exception as e:
-            logger.error(f"      ❌ Error fetching live odds for {race_id}/{horse_id}: {e}")
-            self.stats['errors'] += 1
+        Returns:
+            List of OddsData objects, one per bookmaker
+        """
+        odds_list = []
+        timestamp = datetime.now()
+        horse_id = runner.get('horse_id', '')
+
+        # Get embedded odds from racecard (field name is 'odds')
+        embedded_odds = runner.get('odds', [])
+
+        if not embedded_odds:
+            logger.debug(f"No odds for {runner.get('horse')} in race {race_id}")
             return []
+
+        # Parse each bookmaker's odds
+        for bookie_data in embedded_odds:
+            try:
+                bookmaker_name = bookie_data.get('bookmaker', '')
+                decimal_odds = bookie_data.get('decimal', '')
+                fractional_odds = bookie_data.get('fractional', '')
+
+                # Skip if withdrawn or SP only
+                if decimal_odds in ['-', 'SP', ''] or not decimal_odds:
+                    continue
+
+                # Map bookmaker name to our internal ID
+                bookmaker_key = bookmaker_name.lower().replace(' ', '')
+                bookmaker_info = BOOKMAKER_MAPPING.get(bookmaker_key)
+
+                if not bookmaker_info:
+                    # Create default mapping for unmapped bookmakers
+                    bookmaker_info = {
+                        'id': bookmaker_key,
+                        'name': bookmaker_name,
+                        'type': 'fixed',
+                        'display_name': bookmaker_name
+                    }
+                    logger.debug(f"Unmapped bookmaker: {bookmaker_name} -> {bookmaker_key}")
+
+                # Create odds object
+                odds = OddsData(
+                    race_id=race_id,
+                    horse_id=horse_id,
+                    bookmaker_id=bookmaker_info['id'],
+                    bookmaker_name=bookmaker_info['name'],
+                    bookmaker_type=bookmaker_info['type'],
+                    odds_decimal=float(decimal_odds) if decimal_odds else None,
+                    odds_fractional=fractional_odds if fractional_odds else None,
+                    odds_timestamp=timestamp
+                )
+
+                if odds.odds_decimal:
+                    odds_list.append(odds)
+                    self.stats['bookmakers_found'].add(bookmaker_info['id'])
+
+            except Exception as e:
+                logger.debug(f"Error parsing bookmaker odds: {e} - Data: {bookie_data}")
+                continue
+
+        return odds_list
 
     def _parse_odds_response(self, data: Dict, race_id: str, horse_id: str) -> List[OddsData]:
         """Parse API response and extract odds from all bookmakers"""
@@ -373,14 +423,21 @@ class LiveOddsFetcher:
             return None
 
     def fetch_all_live_odds(self, races: List[Dict]) -> Tuple[List[Dict], Dict]:
-        """Fetch live odds for all horses in given races"""
-        logger.info(f"Fetching live odds for {len(races)} races")
+        """
+        Parse live odds for all horses from racecards data (no additional API calls needed)
+
+        Args:
+            races: List of race dicts from fetch_upcoming_races() with runners data
+
+        Returns:
+            Tuple of (all_odds_records, stats)
+        """
+        logger.info(f"Parsing live odds from {len(races)} races")
         self.stats['start_time'] = datetime.now()
 
         all_odds = []
-        combinations = []
 
-        # Extract all horse/race combinations
+        # Process each race
         for race in races:
             race_id = race.get('race_id')
             if not race_id:
@@ -400,47 +457,33 @@ class LiveOddsFetcher:
                 'runners': len(race.get('runners', []))
             }
 
-            for horse in race.get('runners', []):
-                horse_id = horse.get('horse_id')
+            # Process each runner
+            for runner in race.get('runners', []):
+                horse_id = runner.get('horse_id')
                 if not horse_id:
                     continue
 
-                combination = {
+                horse_meta = {
                     **race_meta,
                     'horse_id': horse_id,
-                    'horse_name': horse.get('horse'),
-                    'horse_number': horse.get('number'),
-                    'jockey': horse.get('jockey'),
-                    'trainer': horse.get('trainer'),
-                    'draw': horse.get('draw'),
-                    'weight': horse.get('weight'),
-                    'age': horse.get('age'),
-                    'form': horse.get('form')
+                    'horse_name': runner.get('horse'),
+                    'horse_number': runner.get('number'),
+                    'jockey': runner.get('jockey'),
+                    'trainer': runner.get('trainer'),
+                    'draw': runner.get('draw'),
+                    'weight': runner.get('weight'),
+                    'age': runner.get('age'),
+                    'form': runner.get('form')
                 }
-                combinations.append(combination)
 
-        self.stats['races_processed'] = len(races)
-        self.stats['horses_processed'] = len(combinations)
-
-        # Fetch odds in parallel
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future_to_combo = {
-                executor.submit(
-                    self.fetch_live_odds,
-                    combo['race_id'],
-                    combo['horse_id']
-                ): combo
-                for combo in combinations
-            }
-
-            for future in as_completed(future_to_combo):
-                combo = future_to_combo[future]
+                # Parse embedded odds from this runner
                 try:
-                    odds_list = future.result()
-                    # Combine metadata with each odds record
+                    odds_list = self.parse_embedded_odds(runner, race_id)
+
+                    # Combine metadata with each bookmaker's odds
                     for odds in odds_list:
                         record = {
-                            **combo,
+                            **horse_meta,
                             'bookmaker_id': odds.bookmaker_id,
                             'bookmaker_name': odds.bookmaker_name,
                             'bookmaker_type': odds.bookmaker_type,
@@ -460,20 +503,25 @@ class LiveOddsFetcher:
                         all_odds.append(record)
                         self.stats['odds_fetched'] += 1
 
+                    self.stats['horses_processed'] += 1
+
                 except Exception as e:
-                    logger.error(f"Error processing odds: {e}")
+                    logger.error(f"Error processing odds for {runner.get('horse')}: {e}")
                     self.stats['errors'] += 1
 
-                # Progress logging
-                if len(all_odds) % 100 == 0:
-                    logger.info(f"Progress: {len(all_odds)} odds records fetched")
+            self.stats['races_processed'] += 1
+
+            # Progress logging
+            if self.stats['races_processed'] % 10 == 0:
+                logger.info(f"Progress: {self.stats['races_processed']} races, {len(all_odds)} odds records")
 
         # Final statistics
         self.stats['duration_seconds'] = (datetime.now() - self.stats['start_time']).total_seconds()
         self.stats['bookmakers_found'] = list(self.stats['bookmakers_found'])
         self.stats['status'] = 'success' if self.stats['errors'] == 0 else 'completed_with_errors'
 
-        logger.info(f"Live odds fetch completed: {len(all_odds)} records from {len(self.stats['bookmakers_found'])} bookmakers")
+        logger.info(f"✅ Live odds parsing completed: {len(all_odds)} records from {len(self.stats['bookmakers_found'])} bookmakers")
+        logger.info(f"   Races: {self.stats['races_processed']}, Horses: {self.stats['horses_processed']}, Duration: {self.stats['duration_seconds']:.2f}s")
         return all_odds, self.stats
 
     def close(self):
