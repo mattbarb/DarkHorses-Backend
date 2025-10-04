@@ -8,7 +8,7 @@ services:
     rootDir: api
     plan: starter  # Requires always-on for background scheduler
     buildCommand: pip install -r requirements.txt
-    startCommand: python3 start.py
+    startCommand: cd api && python3 start.py
     envVars:
       - key: RACING_API_USERNAME
         sync: false
