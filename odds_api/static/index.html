@@ -388,7 +388,22 @@
 
                 let html = '';
 
-                if (data.data.live) {
+                // Check if we have any data
+                if (!data.data || Object.keys(data.data).length === 0) {
+                    html = `
+                        <div class="stat-item" style="background: #fff3cd; color: #856404; border-left: 4px solid #ffc107;">
+                            <span class="stat-label">⏳ Statistics not available yet</span>
+                            <span class="stat-value">Data collection in progress...</span>
+                        </div>
+                        <p style="margin-top: 10px; color: #666; font-size: 0.9em;">
+                            Statistics will be available after the first data collection cycle completes (usually within 10-15 minutes).
+                        </p>
+                    `;
+                    document.getElementById('statistics').innerHTML = html;
+                    return;
+                }
+
+                if (data.data.live && data.data.live.ra_odds_live) {
                     const live = data.data.live.ra_odds_live;
                     html += `
                         <h3>Live Odds Statistics</h3>
@@ -411,7 +426,7 @@
                     `;
                 }
 
-                if (data.data.historical) {
+                if (data.data.historical && data.data.historical.rb_odds_historical) {
                     const hist = data.data.historical.rb_odds_historical;
                     html += `
                         <h3>Historical Odds Statistics</h3>
@@ -430,9 +445,11 @@
                     `;
                 }
 
-                html += `<div class="last-update">Last updated: ${formatDate(data.data.live?.timestamp || data.data.historical?.timestamp)}</div>`;
+                if (html) {
+                    html += `<div class="last-update">Last updated: ${formatDate(data.data.live?.timestamp || data.data.historical?.timestamp)}</div>`;
+                }
 
-                document.getElementById('statistics').innerHTML = html;
+                document.getElementById('statistics').innerHTML = html || '<p>No statistics available</p>';
             } catch (error) {
                 document.getElementById('statistics').innerHTML = `
                     <div class="error">Error loading statistics: ${error.message}</div>
