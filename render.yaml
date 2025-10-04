@@ -1,46 +1,14 @@
-# ⚠️ DEPRECATED - DO NOT USE THIS FILE
-# This configuration deploys separate microservices (3 workers = $21/month)
-#
-# USE INSTEAD: /api/render.yaml
-# The consolidated deployment runs everything in ONE service for $7/month
-#
-# See /api/README_CONSOLIDATED.md for modern deployment instructions
+# Consolidated ONE Service Architecture
+# Runs API + All Schedulers in ONE process for $7/month (not $21/month)
 
 services:
-  # Historical Odds Service - Backfills from 2015 + Daily Updates
-  - type: worker
-    name: historical-odds-service
+  - type: web
+    name: darkhorses-racing-odds
     runtime: python
-    plan: starter
+    rootDirectory: api
+    plan: starter  # Requires always-on for background scheduler
     buildCommand: pip install -r requirements.txt
-    startCommand: python3 historical_odds/cron_historical.py
-    envVars:
-      - key: RACING_API_USERNAME
-        sync: false
-      - key: RACING_API_PASSWORD
-        sync: false
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: LOG_LEVEL
-        value: INFO
-      - key: BACKFILL_START_YEAR
-        value: 2015
-      - key: PYTHONUNBUFFERED
-        value: 1
-      - key: PYTHONDONTWRITEBYTECODE
-        value: 1
-
-  # Live Odds Service - Real-time odds with smart scheduling
-  - type: worker
-    name: live-odds-service
-    runtime: python
-    plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: python3 live_odds/cron_live.py
+    startCommand: python3 start.py
     envVars:
       - key: RACING_API_USERNAME
         sync: false
@@ -55,8 +23,9 @@ services:
       - key: LOG_LEVEL
         value: INFO
       - key: PORT
-        value: 8080
+        value: 8000
       - key: PYTHONUNBUFFERED
         value: 1
       - key: PYTHONDONTWRITEBYTECODE
         value: 1
+    healthCheckPath: /health
