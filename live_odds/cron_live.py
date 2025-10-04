@@ -23,6 +23,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from live_odds_fetcher import LiveOddsFetcher
 from live_odds_client import LiveOddsSupabaseClient
 
+# Setup logging first (before using logger)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('cron_live.log')
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # Import statistics updater
 try:
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'odds_statistics'))
@@ -34,17 +45,6 @@ except ImportError as e:
     STATS_ENABLED = False
     def update_statistics(*args, **kwargs):
         pass
-
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('cron_live.log')
-    ]
-)
-logger = logging.getLogger(__name__)
 
 # Import monitor
 try:

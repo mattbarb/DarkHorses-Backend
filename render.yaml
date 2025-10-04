@@ -5,10 +5,9 @@ services:
   - type: web
     name: darkhorses-racing-odds
     env: python
-    rootDir: api
     plan: starter  # Requires always-on for background scheduler
     buildCommand: pip install -r requirements.txt
-    startCommand: cd api && python3 start.py
+    startCommand: python3 start.py
     envVars:
       - key: RACING_API_USERNAME
         sync: false
