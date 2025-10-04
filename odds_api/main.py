@@ -255,26 +255,33 @@ def get_scheduler_status():
 
     Returns information about scheduled tasks and their timing
     """
+    # Try to load real-time status from scheduler
+    status_file = Path(__file__).parent / 'logs' / 'scheduler_status.json'
+    live_status = {}
+
+    try:
+        if status_file.exists():
+            with open(status_file, 'r') as f:
+                live_status = json.load(f)
+    except Exception as e:
+        logger.warning(f"Could not load scheduler status: {e}")
+
     return {
         "success": True,
         "schedulers": {
             "live_odds": {
                 "name": "Live Odds Fetcher",
-                "schedule": "Every 5 minutes (adaptive frequency based on race proximity)",
+                "schedule": "Every 5 minutes",
                 "description": "Fetches live odds for today and tomorrow's races",
                 "details": {
                     "frequency": "5 minutes default",
-                    "adaptive_schedule": {
-                        "race_starting_soon": "Every 1 minute (within 30 mins of race)",
-                        "race_today": "Every 5 minutes",
-                        "race_tomorrow": "Every 30 minutes"
-                    },
                     "coverage": "Today + Tomorrow (GB & IRE races)",
                     "stop_updating": "When race starts",
                     "tables": ["ra_odds_live"]
                 },
-                "last_run": "Check logs at live_odds/logs/cron_live.log",
-                "cron_job": "*/5 * * * * /usr/bin/python3 /path/to/live_odds/cron_live.py"
+                "last_run": live_status.get("live_odds", {}).get("last_run"),
+                "last_success": live_status.get("live_odds", {}).get("last_success"),
+                "status": live_status.get("live_odds", {}).get("status", "unknown")
             },
             "historical_odds": {
                 "name": "Historical Odds Fetcher",
@@ -282,20 +289,20 @@ def get_scheduler_status():
                 "description": "Fetches yesterday's final odds and results",
                 "details": {
                     "daily_fetch": "1:00 AM UK time",
-                    "backfill_mode": "On-demand for historical data from 2015",
-                    "coverage": "GB & IRE races",
+                    "coverage": "GB & IRE races from 2015 onwards",
                     "data_includes": "Final odds, results, and race metadata",
                     "tables": ["rb_odds_historical"]
                 },
-                "last_run": "Check logs at historical_odds/logs/cron_historical.log",
-                "cron_job": "0 1 * * * /usr/bin/python3 /path/to/historical_odds/cron_historical.py"
+                "last_run": live_status.get("historical_odds", {}).get("last_run"),
+                "last_success": live_status.get("historical_odds", {}).get("last_success"),
+                "status": live_status.get("historical_odds", {}).get("status", "unknown")
             },
             "statistics_updater": {
                 "name": "Statistics Tracker",
-                "schedule": "Automatic after each fetch cycle",
+                "schedule": "Every 10 minutes",
                 "description": "Updates statistics after live/historical fetches",
                 "details": {
-                    "trigger": "Runs automatically after successful fetch cycles",
+                    "frequency": "Every 10 minutes",
                     "output_location": "odds_statistics/output/",
                     "files_generated": [
                         "live_stats_latest.json",
@@ -303,7 +310,10 @@ def get_scheduler_status():
                         "all_stats_latest.json"
                     ],
                     "manual_run": "python3 odds_statistics/update_stats.py"
-                }
+                },
+                "last_run": live_status.get("statistics", {}).get("last_run"),
+                "last_success": live_status.get("statistics", {}).get("last_success"),
+                "status": live_status.get("statistics", {}).get("status", "unknown")
             }
         },
         "system_info": {

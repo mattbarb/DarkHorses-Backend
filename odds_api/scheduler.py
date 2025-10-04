@@ -9,6 +9,7 @@ import os
 import threading
 import time
 import logging
+import json
 from datetime import datetime, time as dt_time
 from pathlib import Path
 import schedule
@@ -37,35 +38,95 @@ class ConsolidatedScheduler:
         self.running = False
         self.live_scheduler = None
         self.historical_scheduler = None
+        self.status_file = Path(__file__).parent / 'logs' / 'scheduler_status.json'
+
+        # Initialize status tracking
+        self.status = {
+            "live_odds": {"last_run": None, "last_success": None, "status": "idle"},
+            "historical_odds": {"last_run": None, "last_success": None, "status": "idle"},
+            "statistics": {"last_run": None, "last_success": None, "status": "idle"}
+        }
+        self._load_status()
+
+    def _load_status(self):
+        """Load status from file if it exists"""
+        try:
+            if self.status_file.exists():
+                with open(self.status_file, 'r') as f:
+                    self.status = json.load(f)
+        except Exception as e:
+            logger.warning(f"Could not load status file: {e}")
+
+    def _save_status(self):
+        """Save status to file"""
+        try:
+            self.status_file.parent.mkdir(exist_ok=True)
+            with open(self.status_file, 'w') as f:
+                json.dump(self.status, f, indent=2)
+        except Exception as e:
+            logger.error(f"Could not save status file: {e}")
 
     def run_live_odds(self):
         """Run live odds fetch cycle"""
+        self.status["live_odds"]["last_run"] = datetime.now().isoformat()
+        self.status["live_odds"]["status"] = "running"
+        self._save_status()
+
         try:
             logger.info("🏇 Starting live odds fetch cycle...")
             self.live_scheduler = LiveOddsScheduler()
             self.live_scheduler.run_fetch_cycle()
             logger.info("✅ Live odds fetch cycle completed")
+
+            self.status["live_odds"]["last_success"] = datetime.now().isoformat()
+            self.status["live_odds"]["status"] = "success"
+            self._save_status()
         except Exception as e:
             logger.error(f"❌ Live odds fetch failed: {e}")
+            self.status["live_odds"]["status"] = "failed"
+            self.status["live_odds"]["error"] = str(e)
+            self._save_status()
 
     def run_historical_odds(self):
         """Run historical odds daily fetch"""
+        self.status["historical_odds"]["last_run"] = datetime.now().isoformat()
+        self.status["historical_odds"]["status"] = "running"
+        self._save_status()
+
         try:
             logger.info("📚 Starting historical odds daily fetch...")
             self.historical_scheduler = HistoricalOddsScheduler()
             self.historical_scheduler.run_daily_job()
             logger.info("✅ Historical odds daily fetch completed")
+
+            self.status["historical_odds"]["last_success"] = datetime.now().isoformat()
+            self.status["historical_odds"]["status"] = "success"
+            self._save_status()
         except Exception as e:
             logger.error(f"❌ Historical odds fetch failed: {e}")
+            self.status["historical_odds"]["status"] = "failed"
+            self.status["historical_odds"]["error"] = str(e)
+            self._save_status()
 
     def run_statistics_update(self):
         """Run statistics update for all tables"""
+        self.status["statistics"]["last_run"] = datetime.now().isoformat()
+        self.status["statistics"]["status"] = "running"
+        self._save_status()
+
         try:
             logger.info("📊 Updating statistics...")
             update_all_statistics(save_to_file=True)
             logger.info("✅ Statistics updated successfully")
+
+            self.status["statistics"]["last_success"] = datetime.now().isoformat()
+            self.status["statistics"]["status"] = "success"
+            self._save_status()
         except Exception as e:
             logger.error(f"❌ Statistics update failed: {e}")
+            self.status["statistics"]["status"] = "failed"
+            self.status["statistics"]["error"] = str(e)
+            self._save_status()
 
     def setup_schedules(self):
         """Configure all scheduled tasks"""

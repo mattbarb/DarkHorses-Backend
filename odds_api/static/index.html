@@ -267,6 +267,28 @@
             return date.toLocaleString();
         }
 
+        // Get status badge class
+        function getStatusBadge(status) {
+            if (!status || status === 'unknown') return '<span class="status-badge" style="background: #ddd; color: #666;">Unknown</span>';
+            if (status === 'success') return '<span class="status-badge status-active">Success</span>';
+            if (status === 'running') return '<span class="status-badge status-running">Running</span>';
+            if (status === 'failed') return '<span class="status-badge" style="background: #f8d7da; color: #721c24;">Failed</span>';
+            return '<span class="status-badge" style="background: #ddd; color: #666;">' + status + '</span>';
+        }
+
+        // Format time ago
+        function timeAgo(dateStr) {
+            if (!dateStr) return 'Never';
+            const date = new Date(dateStr);
+            const now = new Date();
+            const seconds = Math.floor((now - date) / 1000);
+
+            if (seconds < 60) return `${seconds}s ago`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+            return `${Math.floor(seconds / 86400)}d ago`;
+        }
+
         // Load scheduler status
         async function loadSchedulerStatus() {
             try {
@@ -275,21 +297,30 @@
 
                 const html = `
                     <div class="schedule-item">
-                        <h4>Live Odds Fetcher</h4>
+                        <h4>🏇 Live Odds Fetcher</h4>
                         <div class="schedule-time">⏰ ${data.schedulers.live_odds.schedule}</div>
                         <div class="schedule-time">📍 ${data.schedulers.live_odds.details.coverage}</div>
-                        <span class="status-badge status-active">Active</span>
+                        <div class="schedule-time">
+                            ✅ Last Success: ${timeAgo(data.schedulers.live_odds.last_success)}
+                        </div>
+                        ${getStatusBadge(data.schedulers.live_odds.status)}
                     </div>
                     <div class="schedule-item">
-                        <h4>Historical Odds Fetcher</h4>
+                        <h4>📚 Historical Odds Fetcher</h4>
                         <div class="schedule-time">⏰ ${data.schedulers.historical_odds.schedule}</div>
                         <div class="schedule-time">📍 ${data.schedulers.historical_odds.details.coverage}</div>
-                        <span class="status-badge status-active">Active</span>
+                        <div class="schedule-time">
+                            ✅ Last Success: ${timeAgo(data.schedulers.historical_odds.last_success)}
+                        </div>
+                        ${getStatusBadge(data.schedulers.historical_odds.status)}
                     </div>
                     <div class="schedule-item">
-                        <h4>Statistics Updater</h4>
+                        <h4>📊 Statistics Updater</h4>
                         <div class="schedule-time">⏰ ${data.schedulers.statistics_updater.schedule}</div>
-                        <span class="status-badge status-running">Running</span>
+                        <div class="schedule-time">
+                            ✅ Last Success: ${timeAgo(data.schedulers.statistics_updater.last_success)}
+                        </div>
+                        ${getStatusBadge(data.schedulers.statistics_updater.status)}
                     </div>
                 `;
 
@@ -479,6 +510,7 @@
 
             // Auto-refresh every 30 seconds
             setInterval(() => {
+                loadSchedulerStatus();  // Refresh scheduler status to show latest sync times
                 loadLiveOddsStats();
                 loadRecentOdds();
             }, 30000);
