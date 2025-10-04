@@ -406,6 +406,106 @@ def get_courses():
         raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
 
 
+@app.get("/api/live-odds/next-race")
+def get_next_race():
+    """
+    Get information about the next upcoming race and today's race schedule
+    """
+    try:
+        from datetime import datetime, timezone
+        import pytz
+
+        uk_tz = pytz.timezone('Europe/London')
+        now = datetime.now(uk_tz)
+        today = now.date()
+
+        # Get all distinct races for today with their off times
+        result = supabase.table('ra_odds_live')\
+            .select('race_id, race_date, race_time, off_dt, course, race_name')\
+            .eq('race_date', str(today))\
+            .execute()
+
+        if not result.data:
+            return {
+                "success": True,
+                "next_race": None,
+                "races_today": [],
+                "total_races_today": 0,
+                "message": "No races scheduled for today"
+            }
+
+        # Get unique races and calculate time until each
+        races_map = {}
+        for record in result.data:
+            race_id = record.get('race_id')
+            if race_id and race_id not in races_map:
+                races_map[race_id] = record
+
+        races = list(races_map.values())
+
+        # Calculate time until race for each
+        upcoming_races = []
+        for race in races:
+            off_dt = race.get('off_dt')
+            if off_dt:
+                try:
+                    # Parse race time
+                    from dateutil import parser as date_parser
+                    race_time = date_parser.parse(off_dt)
+
+                    # Calculate minutes until race
+                    time_until = (race_time - now).total_seconds() / 60
+
+                    race_info = {
+                        'race_id': race.get('race_id'),
+                        'course': race.get('course'),
+                        'race_name': race.get('race_name'),
+                        'race_time': race.get('race_time'),
+                        'off_dt': off_dt,
+                        'minutes_until': round(time_until, 1),
+                        'started': time_until < 0
+                    }
+
+                    upcoming_races.append(race_info)
+                except Exception as e:
+                    logger.warning(f"Error parsing race time for {race.get('race_id')}: {e}")
+
+        # Sort by time
+        upcoming_races.sort(key=lambda x: x['minutes_until'])
+
+        # Find next race (first one that hasn't started)
+        next_race = None
+        for race in upcoming_races:
+            if not race['started']:
+                next_race = race
+                break
+
+        # Determine current adaptive interval
+        adaptive_interval = "15 minutes (default)"
+        if next_race:
+            mins = next_race['minutes_until']
+            if mins <= 5:
+                adaptive_interval = "10 seconds (imminent)"
+            elif mins <= 30:
+                adaptive_interval = "60 seconds (soon)"
+            elif mins <= 120:
+                adaptive_interval = "5 minutes (upcoming)"
+
+        return {
+            "success": True,
+            "next_race": next_race,
+            "races_today": upcoming_races[:10],  # Limit to first 10
+            "total_races_today": len(upcoming_races),
+            "races_finished": len([r for r in upcoming_races if r['started']]),
+            "races_upcoming": len([r for r in upcoming_races if not r['started']]),
+            "current_interval": adaptive_interval
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching next race: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching next race: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -347,19 +347,88 @@
             }
         }
 
-        // Load live odds stats
+        // Format minutes to human readable
+        function formatMinutes(mins) {
+            if (mins < 0) return 'Started';
+            if (mins < 1) return `${Math.round(mins * 60)}s`;
+            if (mins < 60) return `${Math.round(mins)}m`;
+            const hours = Math.floor(mins / 60);
+            const remaining = Math.round(mins % 60);
+            return `${hours}h ${remaining}m`;
+        }
+
+        // Load live odds stats with next race info
         async function loadLiveOddsStats() {
             try {
-                const response = await fetch(`${API_BASE}/api/live-odds/upcoming-races`);
+                const response = await fetch(`${API_BASE}/api/live-odds/next-race`);
                 const data = await response.json();
 
-                const html = `
-                    <div class="stat-item">
-                        <span class="stat-label">Upcoming Races (24h)</span>
-                        <span class="stat-value">${formatNumber(data.count)}</span>
+                let html = '';
+
+                // Show next race prominently
+                if (data.next_race) {
+                    const race = data.next_race;
+                    const urgencyColor = race.minutes_until <= 5 ? '#dc3545' :
+                                       race.minutes_until <= 30 ? '#fd7e14' :
+                                       race.minutes_until <= 120 ? '#ffc107' : '#28a745';
+
+                    html += `
+                        <div style="background: linear-gradient(135deg, ${urgencyColor}22 0%, ${urgencyColor}11 100%);
+                                    padding: 15px; border-radius: 8px; border-left: 4px solid ${urgencyColor}; margin-bottom: 15px;">
+                            <h4 style="margin: 0 0 8px 0; color: #333; font-size: 0.95em;">🏇 Next Race</h4>
+                            <div style="font-size: 1.1em; font-weight: 600; color: ${urgencyColor}; margin-bottom: 5px;">
+                                ${race.course}
+                            </div>
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 8px;">
+                                ${race.race_name || 'Race'} • ${race.race_time || 'Time TBC'}
+                            </div>
+                            <div style="font-size: 1.2em; font-weight: 700; color: ${urgencyColor};">
+                                ⏱️ ${formatMinutes(race.minutes_until)}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Show current collection frequency
+                html += `
+                    <div class="stat-item" style="background: #e7f3ff;">
+                        <span class="stat-label">📊 Collection Frequency</span>
+                        <span class="stat-value" style="color: #667eea;">${data.current_interval || 'Calculating...'}</span>
                     </div>
-                    <button class="refresh-btn" onclick="viewLiveOdds()">View All Live Odds</button>
                 `;
+
+                // Show today's race count
+                html += `
+                    <div class="stat-item">
+                        <span class="stat-label">Races Today</span>
+                        <span class="stat-value">${data.total_races_today || 0}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Finished / Upcoming</span>
+                        <span class="stat-value">${data.races_finished || 0} / ${data.races_upcoming || 0}</span>
+                    </div>
+                `;
+
+                // Show race list if available
+                if (data.races_today && data.races_today.length > 0) {
+                    html += `<div style="margin-top: 15px; font-size: 0.85em;">`;
+                    html += `<strong style="color: #667eea;">Today's Schedule:</strong><br>`;
+                    data.races_today.slice(0, 5).forEach(race => {
+                        const status = race.started ? '✅' : '⏰';
+                        const textColor = race.started ? '#999' : '#333';
+                        html += `
+                            <div style="padding: 4px 0; color: ${textColor};">
+                                ${status} ${race.race_time || 'TBC'} - ${race.course}
+                            </div>
+                        `;
+                    });
+                    if (data.races_today.length > 5) {
+                        html += `<div style="padding: 4px 0; color: #999;">+ ${data.races_today.length - 5} more races</div>`;
+                    }
+                    html += `</div>`;
+                }
+
+                html += `<button class="refresh-btn" onclick="viewLiveOdds()">View All Live Odds</button>`;
 
                 document.getElementById('live-odds-stats').innerHTML = html;
             } catch (error) {
