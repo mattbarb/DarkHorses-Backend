@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .live_odds_fetcher import LiveOddsFetcher
 from .live_odds_client import LiveOddsSupabaseClient
@@ -93,11 +94,26 @@ class LiveOddsScheduler:
 
         logger.info(f"Fetching odds for {race.get('course')} - {race.get('race_name')}")
 
+        # Convert off_dt to UK time for race_time
+        race_time_uk = None
+        off_dt_str = race.get('off_dt')
+        if off_dt_str:
+            try:
+                # Parse UTC time and convert to UK timezone
+                off_dt_utc = datetime.fromisoformat(off_dt_str.replace('Z', '+00:00'))
+                off_dt_uk = off_dt_utc.astimezone(ZoneInfo('Europe/London'))
+                race_time_uk = off_dt_uk.strftime('%H:%M:%S')
+            except Exception as e:
+                logger.warning(f"Failed to convert off_dt to UK time: {e}")
+                race_time_uk = race.get('off_time')  # Fallback to API value
+        else:
+            race_time_uk = race.get('off_time')  # Fallback if no off_dt
+
         # Extract race metadata
         race_meta = {
             'race_id': race_id,
             'race_date': race.get('date'),
-            'race_time': race.get('off_time'),
+            'race_time': race_time_uk,
             'off_dt': race.get('off_dt'),
             'course': race.get('course'),
             'race_name': race.get('race_name'),

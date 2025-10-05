@@ -14,6 +14,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 import time
 from dataclasses import dataclass
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -289,10 +290,25 @@ class LiveOddsFetcher:
             if not race_id:
                 continue
 
+            # Convert off_dt to UK time for race_time
+            race_time_uk = None
+            off_dt_str = race.get('off_dt')
+            if off_dt_str:
+                try:
+                    # Parse UTC time and convert to UK timezone
+                    off_dt_utc = datetime.fromisoformat(off_dt_str.replace('Z', '+00:00'))
+                    off_dt_uk = off_dt_utc.astimezone(ZoneInfo('Europe/London'))
+                    race_time_uk = off_dt_uk.strftime('%H:%M:%S')
+                except Exception as e:
+                    logger.warning(f"Failed to convert off_dt to UK time: {e}")
+                    race_time_uk = race.get('off_time')  # Fallback to API value
+            else:
+                race_time_uk = race.get('off_time')  # Fallback if no off_dt
+
             race_meta = {
                 'race_id': race_id,
                 'race_date': race.get('race_date'),
-                'race_time': race.get('off_time'),
+                'race_time': race_time_uk,
                 'off_dt': race.get('off_dt'),
                 'course': race.get('course'),
                 'race_name': race.get('race_name'),
