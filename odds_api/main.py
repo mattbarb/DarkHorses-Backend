@@ -223,19 +223,17 @@ def get_races_by_stage():
     try:
         from datetime import datetime, timezone
 
-        # Get distinct races with off_dt
-        today = date.today()
-        tomorrow = today + timedelta(days=1)
+        # Get races that haven't started yet (off_dt in the future)
+        now = datetime.now(timezone.utc)
 
+        # Query for races with off_dt >= now (upcoming races only)
         result = supabase.table('ra_odds_live')\
             .select('race_id, race_date, race_time, off_dt, course, race_name, race_type, distance, runners')\
-            .gte('race_date', str(today))\
-            .lte('race_date', str(tomorrow))\
+            .gte('off_dt', now.isoformat())\
             .execute()
 
         # Get unique races and calculate minutes until
         races_map = {}
-        now = datetime.now(timezone.utc)
 
         if result.data:
             for record in result.data:
@@ -256,23 +254,20 @@ def get_races_by_stage():
                         'minutes_until': minutes_until
                     }
 
-        # Categorize races by stage
+        # Categorize races by stage (no finished races - only upcoming)
         stages = {
             'at_post': [],        # <5 min
             'going_to_post': [],  # 5-30 min
             'pre_race': [],       # 30min-2hrs
             'early_market': [],   # >2hrs
-            'finished': []        # Already started
         }
 
         for race in races_map.values():
             mins = race.get('minutes_until')
-            if mins is None:
-                continue
+            if mins is None or mins < 0:
+                continue  # Skip races without timing or that somehow slipped through
 
-            if mins < 0:
-                stages['finished'].append(race)
-            elif mins < 5:
+            if mins < 5:
                 stages['at_post'].append(race)
             elif mins < 30:
                 stages['going_to_post'].append(race)
@@ -281,7 +276,7 @@ def get_races_by_stage():
             else:
                 stages['early_market'].append(race)
 
-        # Sort each stage by time
+        # Sort each stage by time (soonest first)
         for stage in stages.values():
             stage.sort(key=lambda x: x.get('minutes_until', 999))
 

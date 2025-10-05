@@ -760,17 +760,15 @@
                 html += `</div>`;
 
                 // Add totals
-                const totalActive = (stages.early_market?.length || 0) +
+                const totalRaces = (stages.early_market?.length || 0) +
                                    (stages.pre_race?.length || 0) +
                                    (stages.going_to_post?.length || 0) +
                                    (stages.at_post?.length || 0);
-                const totalFinished = stages.finished?.length || 0;
 
                 html += `
                     <div style="margin-top: 20px; padding: 16px; background: rgba(255, 255, 255, 0.02); border-radius: 8px; border: 1px solid var(--border-primary); display: flex; justify-content: space-between; align-items: center;">
                         <div style="font-size: 14px; color: var(--text-secondary);">
-                            <strong style="color: var(--text-primary);">${totalActive}</strong> active races
-                            ${totalFinished > 0 ? `• <span style="color: var(--text-tertiary);">${totalFinished} finished</span>` : ''}
+                            <strong style="color: var(--text-primary); font-size: 24px;">${totalRaces}</strong> <span style="color: var(--text-secondary);">upcoming races</span>
                         </div>
                         <button class="refresh-btn" onclick="loadLiveOddsKanban()" style="margin: 0;">Refresh</button>
                     </div>
