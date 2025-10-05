@@ -25,14 +25,20 @@ shutdown_flag = threading.Event()
 
 def run_scheduler():
     """Run the consolidated scheduler in background thread"""
+    logger.info("📍 Scheduler thread started, attempting import...")
     try:
         from scheduler import ConsolidatedScheduler
+        logger.info("📍 Scheduler imported successfully")
 
         logger.info("🚀 Starting background scheduler...")
         scheduler = ConsolidatedScheduler()
+        logger.info("📍 Scheduler instance created")
+
         scheduler.run()
     except Exception as e:
         logger.error(f"❌ Scheduler failed to start: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         shutdown_flag.set()
 
 

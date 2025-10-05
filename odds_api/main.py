@@ -194,7 +194,7 @@ def get_upcoming_races(
 @app.get("/api/historical-odds")
 def get_historical_odds(
     race_date: Optional[str] = Query(None, description="Filter by race date (YYYY-MM-DD)"),
-    course: Optional[str] = Query(None, description="Filter by course name"),
+    course: Optional[str] = Query(None, description="Filter by course name (track)"),
     year: Optional[int] = Query(None, ge=2015, le=2025, description="Filter by year"),
     limit: int = Query(100, ge=1, le=1000, description="Number of records to return"),
     offset: int = Query(0, ge=0, description="Number of records to skip")
@@ -203,20 +203,21 @@ def get_historical_odds(
     Get historical odds data
 
     Returns historical odds from rb_odds_historical table with optional filtering
+    Note: rb_odds_historical uses 'date_of_race' and 'track' (not 'race_date' and 'course')
     """
     try:
         query = supabase.table('rb_odds_historical').select('*')
 
-        # Apply filters
+        # Apply filters (use correct column names: date_of_race, track)
         if race_date:
-            query = query.eq('race_date', race_date)
+            query = query.eq('date_of_race', race_date)
         if course:
-            query = query.ilike('course', f'%{course}%')
+            query = query.ilike('track', f'%{course}%')
         if year:
-            query = query.gte('race_date', f'{year}-01-01').lte('race_date', f'{year}-12-31')
+            query = query.gte('date_of_race', f'{year}-01-01').lte('date_of_race', f'{year}-12-31')
 
         # Apply pagination and ordering
-        query = query.order('race_date', desc=True).range(offset, offset + limit - 1)
+        query = query.order('date_of_race', desc=True).range(offset, offset + limit - 1)
 
         result = query.execute()
 
@@ -542,32 +543,41 @@ def get_historical_summary():
 
         logger.info(f"Final total_count: {total_count}")
 
-        # Get date range
+        # Get date range (column is 'date_of_race' not 'race_date')
         date_result = supabase.table('rb_odds_historical')\
-            .select('race_date')\
-            .order('race_date', desc=False)\
+            .select('date_of_race')\
+            .order('date_of_race', desc=False)\
             .limit(1)\
             .execute()
 
-        earliest_date = date_result.data[0]['race_date'] if date_result.data else None
+        earliest_date = date_result.data[0]['date_of_race'] if date_result.data else None
         logger.info(f"Earliest date: {earliest_date}")
 
         latest_result = supabase.table('rb_odds_historical')\
-            .select('race_date')\
-            .order('race_date', desc=True)\
+            .select('date_of_race')\
+            .order('date_of_race', desc=True)\
             .limit(1)\
             .execute()
 
-        latest_date = latest_result.data[0]['race_date'] if latest_result.data else None
+        latest_date = latest_result.data[0]['date_of_race'] if latest_result.data else None
         logger.info(f"Latest date: {latest_date}")
 
-        # Get unique races count (approximate - sample first 10k)
+        # Get unique races count (approximate - sample first 10k by date+track+time combo)
+        # Note: rb_odds_historical doesn't have race_id, use combination of date, track, time
         races_result = supabase.table('rb_odds_historical')\
-            .select('race_id')\
+            .select('date_of_race, track, race_time')\
             .limit(10000)\
             .execute()
 
-        unique_races = len(set([r['race_id'] for r in races_result.data])) if races_result.data else 0
+        unique_races = 0
+        if races_result.data:
+            # Count unique combinations of date+track+time
+            race_combos = set()
+            for r in races_result.data:
+                combo = (r.get('date_of_race'), r.get('track'), r.get('race_time'))
+                race_combos.add(combo)
+            unique_races = len(race_combos)
+
         logger.info(f"Unique races (sample): {unique_races}")
 
         return {
