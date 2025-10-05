@@ -34,20 +34,42 @@ class DatabaseConnection:
                 hostname = match.group(1)
                 logger.info(f"🔍 Resolving {hostname} to IPv4...")
 
-                # Resolve to IPv4 using gethostbyname (more reliable than getaddrinfo on Render)
+                # Try multiple methods to resolve to IPv4
+                ipv4_address = None
+
+                # Method 1: Try subprocess dig (most reliable on Linux/Render)
                 try:
-                    ipv4_address = socket.gethostbyname(hostname)
-                    if ipv4_address:
-                        ipv4_conn_string = connection_string.replace(hostname, ipv4_address)
-                        logger.info(f"✅ Resolved {hostname} → {ipv4_address} (IPv4)")
-                        logger.info(f"📍 Using IPv4 address for connection to avoid Render IPv6 issue")
-                        return ipv4_conn_string
-                    else:
-                        logger.error(f"❌ No IPv4 address found for {hostname}")
-                        logger.error("⚠️  Using original connection string - IPv6 may fail on Render")
-                except socket.gaierror as dns_e:
-                    logger.error(f"❌ DNS resolution failed with gethostbyname: {dns_e}")
-                    logger.error("⚠️  Using original connection string - connection may fail")
+                    import subprocess
+                    result = subprocess.run(
+                        ['dig', '+short', 'A', hostname],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        # Take first A record
+                        addresses = result.stdout.strip().split('\n')
+                        ipv4_address = addresses[0]
+                        logger.info(f"✅ Resolved via dig: {hostname} → {ipv4_address} (IPv4)")
+                except Exception as dig_e:
+                    logger.warning(f"dig resolution failed: {dig_e}")
+
+                # Method 2: Try gethostbyname if dig failed
+                if not ipv4_address:
+                    try:
+                        ipv4_address = socket.gethostbyname(hostname)
+                        logger.info(f"✅ Resolved via gethostbyname: {hostname} → {ipv4_address} (IPv4)")
+                    except socket.gaierror as dns_e:
+                        logger.warning(f"gethostbyname resolution failed: {dns_e}")
+
+                # If we got an IPv4 address, use it
+                if ipv4_address:
+                    ipv4_conn_string = connection_string.replace(hostname, ipv4_address)
+                    logger.info(f"📍 Using IPv4 address for connection to avoid Render IPv6 issue")
+                    return ipv4_conn_string
+                else:
+                    logger.error(f"❌ All IPv4 resolution methods failed for {hostname}")
+                    logger.error("⚠️  Using original connection string - IPv6 may fail on Render")
             else:
                 logger.warning("⚠️  Could not extract hostname from connection string")
 
