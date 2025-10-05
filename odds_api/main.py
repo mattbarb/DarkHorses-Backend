@@ -403,6 +403,81 @@ def refresh_statistics():
         }
 
 
+@app.get("/api/statistics/test-ipv4")
+def test_ipv4_resolution():
+    """
+    Test IPv4 resolution for database connection
+
+    Returns captured log messages to diagnose IPv6 issues
+    """
+    import io
+    import logging as log_module
+
+    # Create string buffer to capture logs
+    log_buffer = io.StringIO()
+    handler = log_module.StreamHandler(log_buffer)
+    handler.setLevel(log_module.INFO)
+    formatter = log_module.Formatter('%(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+
+    # Add handler to STATISTICS_DB logger
+    test_logger = log_module.getLogger('STATISTICS_DB')
+    test_logger.addHandler(handler)
+    test_logger.setLevel(log_module.INFO)
+
+    try:
+        database_url = os.getenv('DATABASE_URL')
+
+        if not database_url:
+            return {
+                "success": False,
+                "message": "DATABASE_URL not set"
+            }
+
+        # Import and test
+        import sys
+        stats_path = Path(__file__).parent / 'odds_statistics'
+        sys.path.insert(0, str(stats_path))
+
+        from database import DatabaseConnection
+
+        # This should trigger IPv4 resolution logging
+        db = DatabaseConnection(database_url)
+
+        # Get the logs
+        log_output = log_buffer.getvalue()
+
+        # Try to connect
+        connection_result = "Not attempted"
+        connection_error = None
+        try:
+            db.connect()
+            connection_result = "Success"
+            db.disconnect()
+        except Exception as e:
+            connection_result = "Failed"
+            connection_error = str(e)
+
+        return {
+            "success": True,
+            "ipv4_resolution_logs": log_output.split('\n') if log_output else ["No logs captured"],
+            "connection_test": connection_result,
+            "connection_error": connection_error,
+            "resolved_connection_string_preview": db.connection_string[:60] + "..." if len(db.connection_string) > 60 else db.connection_string[:30] + "..."
+        }
+
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "logs": log_buffer.getvalue()
+        }
+    finally:
+        test_logger.removeHandler(handler)
+
+
 @app.get("/api/statistics/debug")
 def debug_statistics_files():
     """
