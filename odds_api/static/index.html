@@ -586,60 +586,7 @@
                 const response = await fetch(`${API_BASE}/api/scheduler-status`);
                 const data = await response.json();
 
-                let liveOddsHtml = `
-                    <div class="schedule-item">
-                        <h4>🏇 Live Odds Fetcher</h4>
-
-                        <!-- Adaptive Schedule Details -->
-                        <div style="background: rgba(94, 106, 210, 0.05); padding: 16px; border-radius: 8px; margin: 12px 0; font-size: 13px; border: 1px solid var(--border-primary);">
-                            <strong style="color: var(--accent-primary); font-size: 14px; letter-spacing: 0.02em;">📋 ADAPTIVE SCHEDULE</strong><br>
-                            <div style="padding: 6px 0; margin-top: 8px;">
-                                <span style="display: inline-block; width: 6px; height: 6px; background: #dc3545; border-radius: 50%; margin-right: 8px;"></span>
-                                <strong style="color: var(--text-primary);">10 seconds</strong> <span style="color: var(--text-tertiary);">— At Post (Race Imminent <5 min)</span>
-                            </div>
-                            <div style="padding: 6px 0;">
-                                <span style="display: inline-block; width: 6px; height: 6px; background: #fd7e14; border-radius: 50%; margin-right: 8px;"></span>
-                                <strong style="color: var(--text-primary);">60 seconds</strong> <span style="color: var(--text-tertiary);">— Going To Post (Race Soon <30 min)</span>
-                            </div>
-                            <div style="padding: 6px 0;">
-                                <span style="display: inline-block; width: 6px; height: 6px; background: #ffc107; border-radius: 50%; margin-right: 8px;"></span>
-                                <strong style="color: var(--text-primary);">5 minutes</strong> <span style="color: var(--text-tertiary);">— Pre Race (Race Upcoming <2 hours)</span>
-                            </div>
-                            <div style="padding: 6px 0;">
-                                <span style="display: inline-block; width: 6px; height: 6px; background: #28a745; border-radius: 50%; margin-right: 8px;"></span>
-                                <strong style="color: var(--text-primary);">15 minutes</strong> <span style="color: var(--text-tertiary);">— Early Market (Default)</span>
-                            </div>
-                        </div>
-
-                        <div class="schedule-time">📍 ${data.schedulers.live_odds.details.coverage}</div>`;
-
-                // Show next check info if available
-                if (data.schedulers.live_odds.next_check) {
-                    const interval = data.schedulers.live_odds.next_interval;
-                    let intervalText = interval ? `${interval}s` : 'calculating...';
-                    if (interval >= 60) intervalText = `${Math.floor(interval/60)}m`;
-
-                    // Determine urgency color based on interval
-                    let urgencyColor = interval <= 10 ? '#dc3545' :
-                                      interval <= 60 ? '#fd7e14' :
-                                      interval <= 300 ? '#ffc107' : '#28a745';
-
-                    liveOddsHtml += `
-                        <div style="background: rgba(${urgencyColor === '#dc3545' ? '220, 53, 69' :
-                                                        urgencyColor === '#fd7e14' ? '253, 126, 20' :
-                                                        urgencyColor === '#ffc107' ? '255, 193, 7' : '40, 167, 69'}, 0.1);
-                                    padding: 12px; margin-top: 12px; border-radius: 8px; border: 1px solid ${urgencyColor};">
-                            <strong style="color: ${urgencyColor}; font-size: 14px;">🎯 Next Check:</strong>
-                            <span style="color: var(--text-primary); font-weight: 600;">${intervalText}</span><br>
-                            <span style="font-size: 13px; color: var(--text-secondary); margin-top: 4px; display: block;">${data.schedulers.live_odds.next_check}</span>
-                        </div>`;
-                }
-
-                liveOddsHtml += `
-                        ${getStatusBadge(data.schedulers.live_odds.status)}
-                    </div>`;
-
-                const html = liveOddsHtml + `
+                const html = `
                     <div class="schedule-item">
                         <h4>📚 Historical Odds Fetcher</h4>
                         <div class="schedule-time">⏰ ${data.schedulers.historical_odds.schedule}</div>
@@ -647,7 +594,7 @@
                         <div class="schedule-time">
                             ✅ Last Success: ${formatDate(data.schedulers.historical_odds.last_success)}
                         </div>
-                        <div class="schedule-time" style="font-size: 0.85em; color: #999;">
+                        <div class="schedule-time" style="font-size: 0.85em; color: var(--text-tertiary);">
                             (${timeAgo(data.schedulers.historical_odds.last_success)})
                         </div>
                         ${getStatusBadge(data.schedulers.historical_odds.status)}
@@ -658,7 +605,7 @@
                         <div class="schedule-time">
                             ✅ Last Success: ${formatDate(data.schedulers.statistics_updater.last_success)}
                         </div>
-                        <div class="schedule-time" style="font-size: 0.85em; color: #999;">
+                        <div class="schedule-time" style="font-size: 0.85em; color: var(--text-tertiary);">
                             (${timeAgo(data.schedulers.statistics_updater.last_success)})
                         </div>
                         ${getStatusBadge(data.schedulers.statistics_updater.status)}
