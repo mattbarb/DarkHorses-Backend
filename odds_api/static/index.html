@@ -352,14 +352,18 @@
             border-radius: 8px;
             padding: 12px;
             margin-bottom: 12px;
-            transition: all 0.2s ease;
+            transition: all 0.3s ease;
             cursor: pointer;
+            overflow: hidden;
         }
 
         .kanban-race-card:hover {
             background: rgba(255, 255, 255, 0.06);
-            transform: translateX(4px);
             border-color: var(--border-secondary);
+        }
+
+        .kanban-race-card.expanded {
+            cursor: default;
         }
 
         .kanban-race-course {
@@ -402,6 +406,139 @@
             padding: 2px 6px;
             border-radius: 4px;
             font-size: 11px;
+        }
+
+        .kanban-runner-count {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: rgba(94, 106, 210, 0.15);
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent-primary);
+            margin-bottom: 8px;
+        }
+
+        .kanban-runners-container {
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;
+        }
+
+        .kanban-runners-container.show {
+            max-height: 400px;
+            opacity: 1;
+            margin-top: 12px;
+            overflow-y: auto;
+        }
+
+        .kanban-runners-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .kanban-runner-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 10px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 6px;
+            font-size: 12px;
+            transition: background 0.2s ease;
+        }
+
+        .kanban-runner-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .kanban-runner-item.favorite {
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+        }
+
+        .kanban-runner-name {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .kanban-runner-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-tertiary);
+        }
+
+        .kanban-runner-odds {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+
+        .kanban-runner-odds-value {
+            font-weight: 700;
+            color: var(--accent-primary);
+            font-size: 13px;
+        }
+
+        .kanban-runner-bookmaker {
+            font-size: 10px;
+            color: var(--text-tertiary);
+        }
+
+        .kanban-favorite-badge {
+            background: linear-gradient(135deg, #ffc107, #ff9800);
+            color: #000;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+        }
+
+        .kanban-expand-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+            padding: 8px;
+            margin-top: 8px;
+            background: rgba(94, 106, 210, 0.1);
+            border: 1px solid rgba(94, 106, 210, 0.3);
+            border-radius: 6px;
+            color: var(--accent-primary);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .kanban-expand-btn:hover {
+            background: rgba(94, 106, 210, 0.2);
+            border-color: var(--accent-primary);
+        }
+
+        .kanban-expand-icon {
+            transition: transform 0.3s ease;
+        }
+
+        .kanban-race-card.expanded .kanban-expand-icon {
+            transform: rotate(180deg);
         }
 
         .kanban-legend {
@@ -639,6 +776,26 @@
             return { label: 'Early Market', sublabel: 'Default', color: '#28a745', interval: '15m' };
         }
 
+        // Toggle race card expand/collapse
+        function toggleRaceCard(raceId) {
+            const card = document.querySelector(`[data-race-id="${raceId}"]`);
+            const runnersContainer = document.getElementById(`runners-${raceId}`);
+            const expandText = card.querySelector('.kanban-expand-text');
+
+            if (!card || !runnersContainer) return;
+
+            // Toggle expanded state
+            card.classList.toggle('expanded');
+            runnersContainer.classList.toggle('show');
+
+            // Update button text
+            if (card.classList.contains('expanded')) {
+                expandText.textContent = 'Hide Runners';
+            } else {
+                expandText.textContent = 'Show Runners';
+            }
+        }
+
         // Load live odds Kanban board
         async function loadLiveOddsKanban() {
             try {
@@ -738,17 +895,55 @@
                         races.forEach(race => {
                             const mins = race.minutes_until;
                             const timeDisplay = formatMinutes(mins);
+                            const runners = race.runners_data || [];
+                            const runnerCount = runners.length;
 
                             html += `
-                                <div class="kanban-race-card" style="border-left: 3px solid ${config.color};">
+                                <div class="kanban-race-card" data-race-id="${race.race_id}" style="border-left: 3px solid ${config.color};">
                                     <div class="kanban-race-course">${race.course}</div>
                                     <div class="kanban-race-name">${race.race_name || 'Race'}</div>
+                                    <div class="kanban-runner-count">🏇 ${runnerCount} ${runnerCount === 1 ? 'runner' : 'runners'}</div>
+
+                                    <!-- Runners container (hidden by default) -->
+                                    <div class="kanban-runners-container" id="runners-${race.race_id}">
+                                        <div class="kanban-runners-list">
+                            `;
+
+                            // Add each runner
+                            runners.forEach(runner => {
+                                const isFav = runner.is_favorite;
+                                const favClass = isFav ? 'favorite' : '';
+
+                                html += `
+                                    <div class="kanban-runner-item ${favClass}">
+                                        <div class="kanban-runner-name">
+                                            <span class="kanban-runner-number">#${runner.horse_number || '?'}</span>
+                                            <span>${runner.horse_name || 'Unknown'}</span>
+                                            ${isFav ? '<span class="kanban-favorite-badge">FAV</span>' : ''}
+                                        </div>
+                                        <div class="kanban-runner-odds">
+                                            <span class="kanban-runner-odds-value">${runner.best_odds_fractional || runner.best_odds_decimal || 'N/A'}</span>
+                                            <span class="kanban-runner-bookmaker">${runner.best_bookmaker || ''}</span>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+
+                            html += `
+                                        </div>
+                                    </div>
+
                                     <div class="kanban-race-meta">
                                         <span class="kanban-race-time">${race.race_time || 'TBC'}</span>
                                         <span class="kanban-race-countdown" style="background: rgba(${colorRgb}, 0.2); color: ${config.color};">
                                             ${timeDisplay}
                                         </span>
                                     </div>
+
+                                    <button class="kanban-expand-btn" onclick="toggleRaceCard('${race.race_id}')">
+                                        <span class="kanban-expand-icon">▼</span>
+                                        <span class="kanban-expand-text">Show Runners</span>
+                                    </button>
                                 </div>
                             `;
                         });

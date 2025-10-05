@@ -251,8 +251,68 @@ def get_races_by_stage():
 
                     races_map[race_id] = {
                         **record,
-                        'minutes_until': minutes_until
+                        'minutes_until': minutes_until,
+                        'runners_data': []  # Will populate with runner info
                     }
+
+        # Fetch runner data for each race
+        for race_id in races_map.keys():
+            try:
+                # Get all odds for this race, grouped by horse
+                runners_result = supabase.table('ra_odds_live')\
+                    .select('horse_id, horse_name, horse_number, odds_fractional, odds_decimal, bookmaker_name')\
+                    .eq('race_id', race_id)\
+                    .execute()
+
+                if runners_result.data:
+                    # Group by horse_id to get best odds per horse
+                    horses = {}
+                    for odds_record in runners_result.data:
+                        horse_id = odds_record.get('horse_id')
+                        if not horse_id:
+                            continue
+
+                        if horse_id not in horses:
+                            horses[horse_id] = {
+                                'horse_id': horse_id,
+                                'horse_name': odds_record.get('horse_name'),
+                                'horse_number': odds_record.get('horse_number'),
+                                'best_odds_fractional': odds_record.get('odds_fractional'),
+                                'best_odds_decimal': odds_record.get('odds_decimal'),
+                                'best_bookmaker': odds_record.get('bookmaker_name'),
+                                'all_odds': []
+                            }
+
+                        # Track all bookmaker odds for this horse
+                        if odds_record.get('odds_decimal'):
+                            horses[horse_id]['all_odds'].append({
+                                'bookmaker': odds_record.get('bookmaker_name'),
+                                'odds_fractional': odds_record.get('odds_fractional'),
+                                'odds_decimal': odds_record.get('odds_decimal')
+                            })
+
+                            # Update best odds (lowest decimal = shortest odds = favorite)
+                            current_best = horses[horse_id]['best_odds_decimal']
+                            new_odds = odds_record.get('odds_decimal')
+                            if current_best is None or (new_odds and new_odds < current_best):
+                                horses[horse_id]['best_odds_decimal'] = new_odds
+                                horses[horse_id]['best_odds_fractional'] = odds_record.get('odds_fractional')
+                                horses[horse_id]['best_bookmaker'] = odds_record.get('bookmaker_name')
+
+                    # Convert to list and sort by odds (favorites first)
+                    runners_list = list(horses.values())
+                    runners_list.sort(key=lambda x: x.get('best_odds_decimal') or 999)
+
+                    # Mark favorite (horse with lowest odds)
+                    if runners_list:
+                        runners_list[0]['is_favorite'] = True
+
+                    races_map[race_id]['runners_data'] = runners_list
+
+            except Exception as runner_error:
+                logger.warning(f"Error fetching runners for race {race_id}: {runner_error}")
+                # Continue without runner data for this race
+                pass
 
         # Categorize races by stage (no finished races - only upcoming)
         stages = {
