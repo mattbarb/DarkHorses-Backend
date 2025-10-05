@@ -322,36 +322,85 @@ def refresh_statistics():
     try:
         logger.info("📊 Manual statistics refresh requested")
 
+        # Check DATABASE_URL first
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return {
+                "success": False,
+                "message": "DATABASE_URL environment variable not set",
+                "diagnostic": "Statistics require direct PostgreSQL connection"
+            }
+
         # Import the update function
         import sys
         stats_path = Path(__file__).parent / 'odds_statistics'
         sys.path.insert(0, str(stats_path))
 
+        logger.info(f"📍 Stats path: {stats_path}")
+        logger.info(f"📍 DATABASE_URL configured: {bool(database_url)}")
+
         from update_stats import update_all_statistics
+        from config import Config
+
+        logger.info(f"📍 Config.DEFAULT_OUTPUT_DIR: {Config.DEFAULT_OUTPUT_DIR}")
+        logger.info(f"📍 Config.DATABASE_URL set: {bool(Config.DATABASE_URL)}")
 
         logger.info("📍 Calling update_all_statistics()...")
         result = update_all_statistics(save_to_file=True)
 
         if result:
             logger.info(f"✅ Statistics refresh completed - {len(result)} keys")
+
+            # Check if files were actually created
+            output_dir = Path(Config.DEFAULT_OUTPUT_DIR)
+            files_created = []
+            if output_dir.exists():
+                files_created = [f.name for f in output_dir.iterdir() if f.is_file()]
+
             return {
                 "success": True,
                 "message": "Statistics updated successfully",
                 "timestamp": result.get('timestamp'),
-                "tables_updated": list(result.keys())
+                "tables_updated": list(result.keys()),
+                "output_directory": str(output_dir),
+                "directory_exists": output_dir.exists(),
+                "files_created": files_created
             }
         else:
             logger.error("❌ Statistics refresh returned empty result")
+
+            # Try to get more diagnostic info
+            try:
+                from database import DatabaseConnection
+                db = DatabaseConnection(database_url)
+                db.connect()
+                db.disconnect()
+                db_test = "Database connection successful"
+            except Exception as db_e:
+                db_test = f"Database connection failed: {str(db_e)}"
+
             return {
                 "success": False,
-                "message": "Statistics update failed - check logs for details"
+                "message": "Statistics update returned empty result",
+                "diagnostic": {
+                    "database_url_set": bool(database_url),
+                    "config_database_url_set": bool(Config.DATABASE_URL),
+                    "database_test": db_test,
+                    "stats_path": str(stats_path),
+                    "output_dir": Config.DEFAULT_OUTPUT_DIR
+                }
             }
 
     except Exception as e:
         logger.error(f"❌ Manual statistics refresh failed: {e}")
         import traceback
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Statistics refresh failed: {str(e)}")
+        tb = traceback.format_exc()
+        logger.error(tb)
+        return {
+            "success": False,
+            "message": f"Statistics refresh exception: {str(e)}",
+            "traceback": tb
+        }
 
 
 @app.get("/api/statistics/debug")
