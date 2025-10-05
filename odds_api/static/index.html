@@ -325,10 +325,10 @@
                         <!-- Adaptive Schedule Details -->
                         <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 0.85em;">
                             <strong style="color: #667eea;">📋 Adaptive Schedule:</strong><br>
-                            <div style="padding: 3px 0;"><span style="color: #dc3545;">●</span> <strong>10 seconds</strong> (at_post) - race imminent (<5 min away)</div>
-                            <div style="padding: 3px 0;"><span style="color: #fd7e14;">●</span> <strong>60 seconds</strong> (going_to_post) - race soon (<30 min away)</div>
-                            <div style="padding: 3px 0;"><span style="color: #ffc107;">●</span> <strong>5 minutes</strong> (pre_race) - race upcoming (<2 hours away)</div>
-                            <div style="padding: 3px 0;"><span style="color: #28a745;">●</span> <strong>15 minutes</strong> (early_market) - default check interval</div>
+                            <div style="padding: 3px 0;"><span style="color: #dc3545;">●</span> <strong>10 seconds</strong> - At Post (Race Imminent <5 min)</div>
+                            <div style="padding: 3px 0;"><span style="color: #fd7e14;">●</span> <strong>60 seconds</strong> - Going To Post (Race Soon <30 min)</div>
+                            <div style="padding: 3px 0;"><span style="color: #ffc107;">●</span> <strong>5 minutes</strong> - Pre Race (Race Upcoming <2 hours)</div>
+                            <div style="padding: 3px 0;"><span style="color: #28a745;">●</span> <strong>15 minutes</strong> - Early Market (Default)</div>
                         </div>
 
                         <div class="schedule-time">📍 ${data.schedulers.live_odds.details.coverage}</div>`;
@@ -407,11 +407,11 @@
 
         // Get schedule stage for a race based on minutes until
         function getScheduleStage(minutesUntil) {
-            if (minutesUntil < 0) return { label: 'finished', color: '#999', interval: 'N/A' };
-            if (minutesUntil < 5) return { label: 'at_post', color: '#dc3545', interval: '10s' };
-            if (minutesUntil < 30) return { label: 'going_to_post', color: '#fd7e14', interval: '60s' };
-            if (minutesUntil < 120) return { label: 'pre_race', color: '#ffc107', interval: '5m' };
-            return { label: 'early_market', color: '#28a745', interval: '15m' };
+            if (minutesUntil < 0) return { label: 'Finished', color: '#999', interval: 'N/A' };
+            if (minutesUntil < 5) return { label: 'At Post', sublabel: 'Race Imminent', color: '#dc3545', interval: '10s' };
+            if (minutesUntil < 30) return { label: 'Going To Post', sublabel: 'Race Soon', color: '#fd7e14', interval: '60s' };
+            if (minutesUntil < 120) return { label: 'Pre Race', sublabel: 'Race Upcoming', color: '#ffc107', interval: '5m' };
+            return { label: 'Early Market', sublabel: 'Default', color: '#28a745', interval: '15m' };
         }
 
         // Load live odds stats with next race info
@@ -686,11 +686,10 @@
                             <td>${odd.bookmaker_name}</td>
                             <td><strong>${odd.odds_fractional || odd.odds_decimal}</strong></td>
                             <td>
-                                <span style="color: ${stage.color}; font-weight: 600; font-size: 0.85em;">
+                                <div style="color: ${stage.color}; font-weight: 600; font-size: 0.85em;">
                                     ${stage.label}
-                                </span>
-                                <br>
-                                <small style="color: #666;">${stage.interval}</small>
+                                </div>
+                                <small style="color: #666;">(${stage.sublabel || stage.interval})</small>
                             </td>
                             <td style="font-size: 0.85em;">${formatDate(odd.odds_timestamp)}</td>
                         </tr>
