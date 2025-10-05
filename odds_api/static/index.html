@@ -325,10 +325,10 @@
                         <!-- Adaptive Schedule Details -->
                         <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 0.85em;">
                             <strong style="color: #667eea;">📋 Adaptive Schedule:</strong><br>
-                            <div style="padding: 3px 0;"><span style="color: #dc3545;">●</span> <strong>10 seconds</strong> when race imminent (<5 min away)</div>
-                            <div style="padding: 3px 0;"><span style="color: #fd7e14;">●</span> <strong>60 seconds</strong> when race soon (<30 min away)</div>
-                            <div style="padding: 3px 0;"><span style="color: #ffc107;">●</span> <strong>5 minutes</strong> when race upcoming (<2 hours away)</div>
-                            <div style="padding: 3px 0;"><span style="color: #28a745;">●</span> <strong>15 minutes</strong> default check interval</div>
+                            <div style="padding: 3px 0;"><span style="color: #dc3545;">●</span> <strong>10 seconds</strong> (at_post) - race imminent (<5 min away)</div>
+                            <div style="padding: 3px 0;"><span style="color: #fd7e14;">●</span> <strong>60 seconds</strong> (going_to_post) - race soon (<30 min away)</div>
+                            <div style="padding: 3px 0;"><span style="color: #ffc107;">●</span> <strong>5 minutes</strong> (pre_race) - race upcoming (<2 hours away)</div>
+                            <div style="padding: 3px 0;"><span style="color: #28a745;">●</span> <strong>15 minutes</strong> (early_market) - default check interval</div>
                         </div>
 
                         <div class="schedule-time">📍 ${data.schedulers.live_odds.details.coverage}</div>`;
@@ -403,6 +403,15 @@
             const hours = Math.floor(mins / 60);
             const remaining = Math.round(mins % 60);
             return `${hours}h ${remaining}m`;
+        }
+
+        // Get schedule stage for a race based on minutes until
+        function getScheduleStage(minutesUntil) {
+            if (minutesUntil < 0) return { label: 'finished', color: '#999', interval: 'N/A' };
+            if (minutesUntil < 5) return { label: 'at_post', color: '#dc3545', interval: '10s' };
+            if (minutesUntil < 30) return { label: 'going_to_post', color: '#fd7e14', interval: '60s' };
+            if (minutesUntil < 120) return { label: 'pre_race', color: '#ffc107', interval: '5m' };
+            return { label: 'early_market', color: '#28a745', interval: '15m' };
         }
 
         // Load live odds stats with next race info
@@ -613,7 +622,7 @@
         // Load recent odds
         async function loadRecentOdds() {
             try {
-                const response = await fetch(`${API_BASE}/api/live-odds?limit=10`);
+                const response = await fetch(`${API_BASE}/api/live-odds?limit=50`);
                 const data = await response.json();
 
                 if (data.count === 0) {
@@ -621,6 +630,35 @@
                     return;
                 }
 
+                // Group odds by race to calculate race timing
+                const raceMap = new Map();
+                data.data.forEach(odd => {
+                    const raceKey = `${odd.race_id}_${odd.race_date}_${odd.race_time}`;
+                    if (!raceMap.has(raceKey)) {
+                        raceMap.set(raceKey, {
+                            race_id: odd.race_id,
+                            course: odd.course,
+                            race_date: odd.race_date,
+                            race_time: odd.race_time,
+                            off_dt: odd.off_dt,
+                            odds: []
+                        });
+                    }
+                    raceMap.get(raceKey).odds.push(odd);
+                });
+
+                // Calculate minutes until for each race
+                const now = new Date();
+                raceMap.forEach(race => {
+                    if (race.off_dt) {
+                        const raceTime = new Date(race.off_dt);
+                        race.minutesUntil = (raceTime - now) / 1000 / 60;
+                    } else {
+                        race.minutesUntil = 999; // Unknown
+                    }
+                });
+
+                // Take first 10 odds but show race schedule info
                 let html = `
                     <table>
                         <thead>
@@ -629,6 +667,7 @@
                                 <th>Horse</th>
                                 <th>Bookmaker</th>
                                 <th>Odds</th>
+                                <th>Schedule</th>
                                 <th>Time</th>
                             </tr>
                         </thead>
@@ -636,13 +675,24 @@
                 `;
 
                 data.data.slice(0, 10).forEach(odd => {
+                    const raceKey = `${odd.race_id}_${odd.race_date}_${odd.race_time}`;
+                    const race = raceMap.get(raceKey);
+                    const stage = getScheduleStage(race.minutesUntil);
+
                     html += `
                         <tr>
-                            <td>${odd.course} (${odd.race_date})</td>
+                            <td>${odd.course}<br><small style="color: #666;">${odd.race_time || 'TBC'}</small></td>
                             <td>${odd.horse_name}</td>
                             <td>${odd.bookmaker_name}</td>
-                            <td>${odd.odds_fractional || odd.odds_decimal}</td>
-                            <td>${formatDate(odd.odds_timestamp)}</td>
+                            <td><strong>${odd.odds_fractional || odd.odds_decimal}</strong></td>
+                            <td>
+                                <span style="color: ${stage.color}; font-weight: 600; font-size: 0.85em;">
+                                    ${stage.label}
+                                </span>
+                                <br>
+                                <small style="color: #666;">${stage.interval}</small>
+                            </td>
+                            <td style="font-size: 0.85em;">${formatDate(odd.odds_timestamp)}</td>
                         </tr>
                     `;
                 });
