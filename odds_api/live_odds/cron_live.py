@@ -217,7 +217,8 @@ class LiveOddsScheduler:
             'races_processed': 0,
             'horses_processed': 0,
             'odds_stored': 0,
-            'errors': 0
+            'errors': 0,
+            'start_time': datetime.now()
         }
 
         all_odds_records = []
@@ -410,6 +411,23 @@ class LiveOddsScheduler:
                     logger.info(f"   Errors: {db_stats.get('errors', 0)}")
                     logger.info(f"=" * 80)
                     logger.info(f"")
+
+                    # Save fetch statistics to ra_odds_statistics table
+                    try:
+                        # Create dummy arrays of correct length for save_statistics()
+                        # It expects 'races' and 'horses' arrays to get len() from
+                        stats_record = {
+                            'races': [None] * stats.get('races_processed', 0),  # Dummy array
+                            'horses': [None] * stats.get('horses_processed', 0),  # Dummy array
+                            'bookmakers_found': list(bookmakers_seen),
+                            'odds_fetched': len(all_odds_records),
+                            'duration_seconds': (datetime.now() - stats.get('start_time', datetime.now())).total_seconds() if stats.get('start_time') else 0,
+                            'errors': stats.get('errors', 0)
+                        }
+                        self.client.save_statistics(stats_record)
+                        logger.info(f"📊 Fetch statistics saved to ra_odds_statistics table")
+                    except Exception as stats_err:
+                        logger.warning(f"⚠️  Failed to save statistics: {stats_err}")
 
                     if MONITOR_ENABLED:
                         add_activity(f"✅ Stored {len(all_odds_records)} odds (updated: {db_stats.get('updated', 0)})")
