@@ -45,7 +45,7 @@ logging.basicConfig(
         logging.FileHandler('cron_historical.log')
     ]
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('HISTORICAL_ODDS')  # Clear service name
 
 # Import monitor (optional)
 try:

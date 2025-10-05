@@ -29,7 +29,7 @@ logging.basicConfig(
         logging.FileHandler('cron_live.log')
     ]
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('LIVE_ODDS')  # Clear service name
 
 # Import statistics updater
 try:

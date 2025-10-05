@@ -29,7 +29,7 @@ logging.basicConfig(
     ]
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('SCHEDULER')  # Clear service name
 
 class ConsolidatedScheduler:
     """Runs all schedulers in a single process"""

@@ -20,7 +20,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 # Setup logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('API')  # Clear service name
 
 # Load environment variables
 env_path = Path(__file__).parent.parent / '.env.local'
@@ -108,6 +108,24 @@ def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/version")
+def version_check():
+    """Deployment version check - verify which code is running"""
+    return {
+        "service": "DarkHorses Odds API",
+        "version": "1.0.0",
+        "deployed_at": datetime.now().isoformat(),
+        "historical_table_columns": "date_of_race, track (NOT race_date, course)",
+        "logger_names": "API, SCHEDULER, LIVE_ODDS, HISTORICAL_ODDS",
+        "git_commit": "Fix historical column names + clear service logging",
+        "checks": {
+            "database_url_configured": bool(database_url),
+            "supabase_configured": bool(supabase_url),
+            "historical_table": "rb_odds_historical (date_of_race, track, race_time)"
+        }
     }
 
 
