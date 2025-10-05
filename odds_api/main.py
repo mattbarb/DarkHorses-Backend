@@ -403,6 +403,56 @@ def refresh_statistics():
         }
 
 
+@app.get("/api/statistics/config-check")
+def check_statistics_config():
+    """
+    Check which database URL the statistics module is using
+    """
+    import sys
+    from pathlib import Path
+
+    try:
+        stats_path = Path(__file__).parent / 'odds_statistics'
+        sys.path.insert(0, str(stats_path))
+        from config import Config
+
+        # Mask passwords in URLs
+        def mask_url(url):
+            if not url:
+                return None
+            if '@' in url:
+                parts = url.split('@')
+                # Show everything after @ (host), mask before
+                return f"postgresql://***:***@{parts[1]}"
+            return url[:30] + "..."
+
+        return {
+            "success": True,
+            "environment_variables": {
+                "SESSION_POOLER": bool(os.getenv('SESSION_POOLER')),
+                "TRANSACTION_POOLER": bool(os.getenv('TRANSACTION_POOLER')),
+                "DATABASE_URL": bool(os.getenv('DATABASE_URL'))
+            },
+            "config_resolved": {
+                "DATABASE_URL": mask_url(Config.DATABASE_URL),
+                "uses_pooler": "pooler.supabase.com" in (Config.DATABASE_URL or ""),
+                "uses_direct_db": "db." in (Config.DATABASE_URL or "") and ".supabase.co" in (Config.DATABASE_URL or "")
+            },
+            "resolution_order": [
+                "1. SESSION_POOLER (preferred)",
+                "2. TRANSACTION_POOLER (fallback)",
+                "3. DATABASE_URL (last resort)"
+            ]
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 @app.get("/api/statistics/test-ipv4")
 def test_ipv4_resolution():
     """
