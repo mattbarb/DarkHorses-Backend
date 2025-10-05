@@ -21,7 +21,11 @@ class Config:
     # Database connection - Direct PostgreSQL for read-only statistics queries
     # (Supabase client doesn't support complex aggregation queries needed for statistics)
     # Main data pipeline uses Supabase client for write operations
-    DATABASE_URL = os.getenv('DATABASE_URL')
+    #
+    # IMPORTANT: Use connection pooler URL (not direct database URL)
+    # Render.com doesn't support IPv6, and direct db.*.supabase.co is IPv6-only
+    # Use SESSION_POOLER or TRANSACTION_POOLER with pooler.supabase.com hostname
+    DATABASE_URL = os.getenv('SESSION_POOLER') or os.getenv('TRANSACTION_POOLER') or os.getenv('DATABASE_URL')
 
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
