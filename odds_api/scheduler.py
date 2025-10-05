@@ -154,7 +154,7 @@ class ConsolidatedScheduler:
             self._save_status()
 
     def setup_schedules(self):
-        """Configure all scheduled tasks"""
+        """Configure all scheduled tasks and return initial live odds interval"""
 
         # Historical odds - daily at 1:00 AM UK time
         schedule.every().day.at("01:00").do(self.run_historical_odds)
@@ -173,13 +173,15 @@ class ConsolidatedScheduler:
 
         # Run initial fetch on startup
         logger.info("🚀 Running initial fetch on startup...")
-        self.run_live_odds()
+        initial_interval = self.run_live_odds()
         self.run_statistics_update()
+
+        return initial_interval
 
     def run(self):
         """Start the scheduler loop with adaptive live odds scheduling"""
         self.running = True
-        self.setup_schedules()
+        initial_interval = self.setup_schedules()
 
         logger.info("✅ Consolidated scheduler started successfully")
         logger.info("📋 Active schedules:")
@@ -187,8 +189,9 @@ class ConsolidatedScheduler:
         logger.info("   - Historical odds: Daily at 1:00 AM UK time")
         logger.info("   - Statistics: Every 10 minutes")
 
-        # Track next live odds check time
-        next_live_check = datetime.now()
+        # Track next live odds check time - use interval from initial run
+        next_live_check = datetime.now() + timedelta(seconds=initial_interval)
+        logger.info(f"📅 Initial live odds check scheduled for: {next_live_check.strftime('%H:%M:%S')} ({initial_interval}s)")
 
         while self.running:
             try:
