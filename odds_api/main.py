@@ -209,6 +209,94 @@ def get_upcoming_races(
         raise HTTPException(status_code=500, detail=f"Error fetching upcoming races: {str(e)}")
 
 
+@app.get("/api/live-odds/races-by-stage")
+def get_races_by_stage():
+    """
+    Get races organized by schedule stage (Kanban board)
+
+    Returns races grouped into 4 stages:
+    - early_market: >2 hours away
+    - pre_race: 30min-2hrs away
+    - going_to_post: 5-30min away
+    - at_post: <5min away
+    """
+    try:
+        from datetime import datetime, timezone
+
+        # Get distinct races with off_dt
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+
+        result = supabase.table('ra_odds_live')\
+            .select('race_id, race_date, race_time, off_dt, course, race_name, race_type, distance, runners')\
+            .gte('race_date', str(today))\
+            .lte('race_date', str(tomorrow))\
+            .execute()
+
+        # Get unique races and calculate minutes until
+        races_map = {}
+        now = datetime.now(timezone.utc)
+
+        if result.data:
+            for record in result.data:
+                race_id = record.get('race_id')
+                if race_id and race_id not in races_map:
+                    # Calculate minutes until race
+                    off_dt = record.get('off_dt')
+                    minutes_until = None
+                    if off_dt:
+                        try:
+                            race_time = datetime.fromisoformat(off_dt.replace('Z', '+00:00'))
+                            minutes_until = (race_time - now).total_seconds() / 60
+                        except:
+                            pass
+
+                    races_map[race_id] = {
+                        **record,
+                        'minutes_until': minutes_until
+                    }
+
+        # Categorize races by stage
+        stages = {
+            'at_post': [],        # <5 min
+            'going_to_post': [],  # 5-30 min
+            'pre_race': [],       # 30min-2hrs
+            'early_market': [],   # >2hrs
+            'finished': []        # Already started
+        }
+
+        for race in races_map.values():
+            mins = race.get('minutes_until')
+            if mins is None:
+                continue
+
+            if mins < 0:
+                stages['finished'].append(race)
+            elif mins < 5:
+                stages['at_post'].append(race)
+            elif mins < 30:
+                stages['going_to_post'].append(race)
+            elif mins < 120:
+                stages['pre_race'].append(race)
+            else:
+                stages['early_market'].append(race)
+
+        # Sort each stage by time
+        for stage in stages.values():
+            stage.sort(key=lambda x: x.get('minutes_until', 999))
+
+        return {
+            "success": True,
+            "stages": stages,
+            "total_races": len(races_map),
+            "timestamp": now.isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching races by stage: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching races by stage: {str(e)}")
+
+
 @app.get("/api/historical-odds")
 def get_historical_odds(
     race_date: Optional[str] = Query(None, description="Filter by race date (YYYY-MM-DD)"),
