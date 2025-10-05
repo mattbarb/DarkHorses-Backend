@@ -458,11 +458,31 @@ def test_ipv4_resolution():
             connection_result = "Failed"
             connection_error = str(e)
 
+        # Also test direct psycopg2 connection without IPv4 resolution
+        direct_test_result = "Not attempted"
+        direct_test_error = None
+        try:
+            import psycopg2
+            logger.info("Testing direct psycopg2 connection (no IPv4 resolution)...")
+            direct_conn = psycopg2.connect(database_url)
+            direct_test_result = "Success"
+            direct_conn.close()
+        except Exception as direct_e:
+            direct_test_result = "Failed"
+            direct_test_error = str(direct_e)
+
         return {
             "success": True,
             "ipv4_resolution_logs": log_output.split('\n') if log_output else ["No logs captured"],
-            "connection_test": connection_result,
-            "connection_error": connection_error,
+            "with_ipv4_resolution": {
+                "result": connection_result,
+                "error": connection_error[:200] if connection_error else None
+            },
+            "direct_connection_test": {
+                "result": direct_test_result,
+                "error": direct_test_error[:200] if direct_test_error else None,
+                "note": "Tests if IPv6 connections work on Render"
+            },
             "resolved_connection_string_preview": db.connection_string[:60] + "..." if len(db.connection_string) > 60 else db.connection_string[:30] + "..."
         }
 
