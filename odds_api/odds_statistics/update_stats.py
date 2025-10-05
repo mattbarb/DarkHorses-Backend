@@ -103,6 +103,15 @@ def update_all_statistics(save_to_file: bool = True) -> dict:
             logger.error("❌ DATABASE_URL not set - cannot collect statistics")
             return {}
 
+        # Check if using direct db.*.supabase.co URL (won't work on Render due to IPv6-only)
+        if 'db.' in Config.DATABASE_URL and '.supabase.co' in Config.DATABASE_URL:
+            logger.error("❌ DATABASE_URL uses direct database connection (db.*.supabase.co)")
+            logger.error("⚠️  Render doesn't support IPv6, and Supabase db hosts are IPv6-only")
+            logger.error("✅ SOLUTION: Use Supabase connection pooler URL instead:")
+            logger.error("   Change DATABASE_URL to use: pooler.supabase.com (has IPv4 support)")
+            logger.error("   Example: postgresql://...@aws-0-us-west-1.pooler.supabase.com:5432/...")
+            return {}
+
         logger.info("📍 Connecting to database...")
         db = DatabaseConnection(Config.DATABASE_URL)
         logger.info("✅ Database connection established")
