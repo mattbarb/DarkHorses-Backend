@@ -312,6 +312,48 @@ def get_statistics(
         raise HTTPException(status_code=500, detail=f"Error loading statistics: {str(e)}")
 
 
+@app.post("/api/statistics/refresh")
+def refresh_statistics():
+    """
+    Manually trigger statistics collection
+
+    Useful for testing or forcing an immediate update
+    """
+    try:
+        logger.info("📊 Manual statistics refresh requested")
+
+        # Import the update function
+        import sys
+        stats_path = Path(__file__).parent / 'odds_statistics'
+        sys.path.insert(0, str(stats_path))
+
+        from update_stats import update_all_statistics
+
+        logger.info("📍 Calling update_all_statistics()...")
+        result = update_all_statistics(save_to_file=True)
+
+        if result:
+            logger.info(f"✅ Statistics refresh completed - {len(result)} keys")
+            return {
+                "success": True,
+                "message": "Statistics updated successfully",
+                "timestamp": result.get('timestamp'),
+                "tables_updated": list(result.keys())
+            }
+        else:
+            logger.error("❌ Statistics refresh returned empty result")
+            return {
+                "success": False,
+                "message": "Statistics update failed - check logs for details"
+            }
+
+    except Exception as e:
+        logger.error(f"❌ Manual statistics refresh failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Statistics refresh failed: {str(e)}")
+
+
 @app.get("/api/scheduler-status")
 def get_scheduler_status():
     """
