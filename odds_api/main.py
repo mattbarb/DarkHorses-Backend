@@ -255,14 +255,31 @@ def get_races_by_stage():
                         'runners_data': []  # Will populate with runner info
                     }
 
-        # Fetch runner data for each race
+        # Fetch runner data and timestamps for each race
         for race_id in races_map.keys():
             try:
                 # Get all odds for this race, grouped by horse
                 runners_result = supabase.table('ra_odds_live')\
-                    .select('horse_id, horse_name, horse_number, odds_fractional, odds_decimal, bookmaker_name')\
+                    .select('horse_id, horse_name, horse_number, odds_fractional, odds_decimal, bookmaker_name, odds_timestamp, fetched_at')\
                     .eq('race_id', race_id)\
                     .execute()
+
+                # Find the most recent update timestamp for this race
+                latest_timestamp = None
+                if runners_result.data:
+                    for odds_record in runners_result.data:
+                        timestamp = odds_record.get('odds_timestamp') or odds_record.get('fetched_at')
+                        if timestamp:
+                            try:
+                                ts = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                if latest_timestamp is None or ts > latest_timestamp:
+                                    latest_timestamp = ts
+                            except:
+                                pass
+
+                    # Store the latest timestamp
+                    if latest_timestamp:
+                        races_map[race_id]['last_updated'] = latest_timestamp.isoformat()
 
                 if runners_result.data:
                     # Group by horse_id to get best odds per horse
@@ -313,6 +330,33 @@ def get_races_by_stage():
                 logger.warning(f"Error fetching runners for race {race_id}: {runner_error}")
                 # Continue without runner data for this race
                 pass
+
+        # Calculate next phase transition for each race
+        for race_id, race in races_map.items():
+            mins = race.get('minutes_until')
+            if mins is not None and mins >= 0:
+                # Calculate when race moves to next phase
+                next_phase_minutes = None
+                next_phase_name = None
+
+                if mins >= 120:  # Currently in Early Market
+                    next_phase_minutes = mins - 120
+                    next_phase_name = "Pre Race"
+                elif mins >= 30:  # Currently in Pre Race
+                    next_phase_minutes = mins - 30
+                    next_phase_name = "Going To Post"
+                elif mins >= 5:  # Currently in Going To Post
+                    next_phase_minutes = mins - 5
+                    next_phase_name = "At Post"
+                else:  # At Post
+                    next_phase_minutes = mins
+                    next_phase_name = "Race Start"
+
+                if next_phase_minutes is not None:
+                    next_phase_time = now + timedelta(minutes=next_phase_minutes)
+                    races_map[race_id]['next_phase_time'] = next_phase_time.isoformat()
+                    races_map[race_id]['next_phase_name'] = next_phase_name
+                    races_map[race_id]['next_phase_minutes'] = round(next_phase_minutes, 1)
 
         # Categorize races by stage (no finished races - only upcoming)
         stages = {

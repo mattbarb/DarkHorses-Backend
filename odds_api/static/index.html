@@ -566,6 +566,36 @@
             border-radius: 50%;
         }
 
+        .kanban-timestamps {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .kanban-timestamp-item {
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .kanban-timestamp-label {
+            color: var(--text-tertiary);
+            font-weight: 500;
+        }
+
+        .kanban-timestamp-value {
+            color: var(--text-secondary);
+        }
+
+        .kanban-next-phase {
+            color: var(--accent-primary);
+            font-weight: 600;
+        }
+
         @media (max-width: 1200px) {
             .kanban-board {
                 grid-template-columns: repeat(2, 1fr);
@@ -903,6 +933,22 @@
                                     <div class="kanban-race-course">${race.course}</div>
                                     <div class="kanban-race-name">${race.race_name || 'Race'}</div>
                                     <div class="kanban-runner-count">🏇 ${runnerCount} ${runnerCount === 1 ? 'runner' : 'runners'}</div>
+
+                                    <!-- Timestamps -->
+                                    <div class="kanban-timestamps">
+                                        ${race.last_updated ? `
+                                            <div class="kanban-timestamp-item">
+                                                <span class="kanban-timestamp-label">⟳ Updated:</span>
+                                                <span class="kanban-timestamp-value">${timeAgo(race.last_updated)}</span>
+                                            </div>
+                                        ` : ''}
+                                        ${race.next_phase_name && race.next_phase_minutes !== undefined ? `
+                                            <div class="kanban-timestamp-item">
+                                                <span class="kanban-timestamp-label">→ Next:</span>
+                                                <span class="kanban-next-phase">${race.next_phase_name} in ${formatMinutes(race.next_phase_minutes)}</span>
+                                            </div>
+                                        ` : ''}
+                                    </div>
 
                                     <!-- Runners container (hidden by default) -->
                                     <div class="kanban-runners-container" id="runners-${race.race_id}">
