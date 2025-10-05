@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Schema Mapping for Racing API Combined Data to rb_odds_historical Table
+Schema Mapping for Racing API Combined Data to ra_odds_historical Table
 
-Maps combined Racing API data (racecards + results) to rb_odds_historical table schema.
+Maps combined Racing API data (racecards + results) to ra_odds_historical table schema.
 Extracts real pre-race odds from bookmaker array and calculates derived fields.
 
 Key Features:
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class SchemaMapper:
-    """Maps Racing API combined data to rb_odds_historical table schema"""
+    """Maps Racing API combined data to ra_odds_historical table schema"""
 
     # Irish courses for country inference
     IRISH_COURSES = {
@@ -307,7 +307,7 @@ class SchemaMapper:
 
     def map_combined_to_rb_odds(self, combined_data: Dict, all_runners: List[Dict] = None) -> Optional[Dict]:
         """
-        Map a combined data record (racecards + results) to rb_odds_historical schema
+        Map a combined data record (racecards + results) to ra_odds_historical schema
 
         Args:
             combined_data: Combined data from historical_odds_fetcher (racecards + results joined)

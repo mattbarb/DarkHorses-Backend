@@ -2,7 +2,7 @@
 """
 Odds Data Pipeline Statistics Tracker
 
-Tracks and reports statistics for rb_odds_historical and ra_odds_live tables
+Tracks and reports statistics for ra_odds_historical and ra_odds_live tables
 
 Usage:
     python stats_tracker.py                          # Console output for both tables
@@ -56,12 +56,12 @@ class OddsStatisticsTracker:
         }
 
         if table in ['all', 'historical']:
-            logger.info("Collecting rb_odds_historical statistics...")
+            logger.info("Collecting ra_odds_historical statistics...")
             try:
-                stats['rb_odds_historical'] = self.historical_collector.collect_all_stats()
+                stats['ra_odds_historical'] = self.historical_collector.collect_all_stats()
             except Exception as e:
                 logger.error(f"Error collecting historical stats: {e}")
-                stats['rb_odds_historical'] = {'error': str(e)}
+                stats['ra_odds_historical'] = {'error': str(e)}
 
         if table in ['all', 'live']:
             logger.info("Collecting ra_odds_live statistics...")

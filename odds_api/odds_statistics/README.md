@@ -1,6 +1,6 @@
 # Odds Data Pipeline Statistics Tracker
 
-Comprehensive statistics tracking for the odds data pipeline, monitoring both `rb_odds_historical` and `ra_odds_live` tables.
+Comprehensive statistics tracking for the odds data pipeline, monitoring both `ra_odds_historical` and `ra_odds_live` tables.
 
 ## Features
 
@@ -67,7 +67,7 @@ python stats_tracker.py --table live | grep "RECENT ACTIVITY" -A 5
 
 ## Statistics Collected
 
-### rb_odds_historical
+### ra_odds_historical
 
 - **Basic Metrics**: Total records, date range, latest update
 - **Recent Activity**: Records added (last hour, 24h, 7 days)
@@ -139,7 +139,7 @@ odds-stats --format json --output latest.json
 ================================================================================
 
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ TABLE: rb_odds_historical                                                  │
+│ TABLE: ra_odds_historical                                                  │
 └──────────────────────────────────────────────────────────────────────────┘
 
 📊 BASIC METRICS
@@ -166,7 +166,7 @@ Last 7 Days            189,567
 ```json
 {
   "timestamp": "2025-10-04T15:30:45.123456",
-  "rb_odds_historical": {
+  "ra_odds_historical": {
     "basic_metrics": {
       "total_records": 1234567,
       "earliest_race_date": "2023-01-23",
@@ -190,7 +190,7 @@ odds_statistics/
 ├── database.py              # PostgreSQL connection manager
 ├── stats_tracker.py         # Main entry point (CLI)
 ├── collectors/
-│   ├── historical_collector.py  # rb_odds_historical stats
+│   ├── historical_collector.py  # ra_odds_historical stats
 │   └── live_collector.py        # ra_odds_live stats
 └── formatters/
     ├── console_formatter.py  # Terminal output

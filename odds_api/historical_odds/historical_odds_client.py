@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Historical Odds Supabase Client - Dual Endpoint Version
-Handles database operations for rb_odds_historical table
+Handles database operations for ra_odds_historical table
 Works with combined racecards + results data from dual-endpoint fetcher
 """
 
@@ -52,7 +52,7 @@ class HistoricalOddsClient:
         except Exception as e:
             logger.error(f"❌ Failed to create Supabase client: {e}")
             raise ValueError(f"Could not initialize Supabase client: {e}")
-        self.table_name = 'rb_odds_historical'
+        self.table_name = 'ra_odds_historical'
         self.mapper = SchemaMapper()
 
         self.stats = {
@@ -148,7 +148,7 @@ class HistoricalOddsClient:
             True if successful, False otherwise
         """
         try:
-            # Map combined data to rb_odds_historical schema
+            # Map combined data to ra_odds_historical schema
             mapped_record = self.mapper.map_combined_to_rb_odds(combined_data)
 
             if not mapped_record:
@@ -197,7 +197,7 @@ class HistoricalOddsClient:
             True if successful, False otherwise
         """
         try:
-            # Map combined data to rb_odds_historical schema
+            # Map combined data to ra_odds_historical schema
             mapped_record = self.mapper.map_combined_to_rb_odds(combined_data)
 
             if not mapped_record:
@@ -260,7 +260,7 @@ class HistoricalOddsClient:
         total_inserted = 0
 
         # First, map all records
-        logger.info(f"📋 Mapping {len(combined_list)} combined records to rb_odds_historical schema...")
+        logger.info(f"📋 Mapping {len(combined_list)} combined records to ra_odds_historical schema...")
         mapped_records = self.mapper.map_batch(combined_list)
         logger.info(f"✅ Successfully mapped {len(mapped_records)} records")
 
@@ -427,7 +427,7 @@ class HistoricalOddsClient:
         Insert or update a pre-mapped odds record (for use with SchemaMapper)
 
         Args:
-            mapped_record: Already-mapped record matching rb_odds_historical schema
+            mapped_record: Already-mapped record matching ra_odds_historical schema
 
         Returns:
             True if successful, False otherwise

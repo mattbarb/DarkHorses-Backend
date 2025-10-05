@@ -52,7 +52,7 @@ def update_statistics(table: str = 'live', save_to_file: bool = True) -> dict:
 
         elif table == 'historical':
             collector = HistoricalOddsCollector(db)
-            stats['rb_odds_historical'] = collector.collect_all_stats()
+            stats['ra_odds_historical'] = collector.collect_all_stats()
             logger.info("✅ Historical odds statistics updated")
 
         else:
@@ -123,8 +123,8 @@ def update_all_statistics(save_to_file: bool = True) -> dict:
         # Collect both tables
         logger.info("📍 Collecting historical odds statistics...")
         historical_collector = HistoricalOddsCollector(db)
-        stats['rb_odds_historical'] = historical_collector.collect_all_stats()
-        logger.info(f"✅ Historical stats collected: {len(stats['rb_odds_historical'])} keys")
+        stats['ra_odds_historical'] = historical_collector.collect_all_stats()
+        logger.info(f"✅ Historical stats collected: {len(stats['ra_odds_historical'])} keys")
 
         logger.info("📍 Collecting live odds statistics...")
         live_collector = LiveOddsCollector(db)

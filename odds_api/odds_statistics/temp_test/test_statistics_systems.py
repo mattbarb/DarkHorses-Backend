@@ -116,7 +116,7 @@ CALCULATES:
 
 SOURCE DATA:
 - Queries ra_odds_live table (live odds)
-- Queries rb_odds_historical table (historical odds)
+- Queries ra_odds_historical table (historical odds)
 - Uses direct PostgreSQL connection (not Supabase SDK)
 - Runs complex aggregations (COUNT DISTINCT, GROUP BY, etc.)
 

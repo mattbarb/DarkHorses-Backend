@@ -30,7 +30,7 @@ All statistics JSON files are saved to:
 
 Files generated:
 - `live_stats_latest.json` - Latest statistics for ra_odds_live table
-- `historical_stats_latest.json` - Latest statistics for rb_odds_historical table
+- `historical_stats_latest.json` - Latest statistics for ra_odds_historical table
 - `all_stats_latest.json` - Combined statistics (when running manually)
 
 ## Manual Updates
@@ -88,7 +88,7 @@ python3 stats_tracker.py --table all --format console
 - Data quality metrics
 - Market status breakdown
 
-### For rb_odds_historical:
+### For ra_odds_historical:
 - Basic metrics (total records, date ranges)
 - Records per year/month
 - Unique entities (races, horses, bookmakers)

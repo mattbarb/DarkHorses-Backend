@@ -12,7 +12,7 @@ print(f"Created directory: {sql_dir}")
 # Move SQL files
 files_to_move = [
     ('create_service_state_table.sql', 'sql/create_service_state_table.sql'),
-    ('historical_odds/create_rb_odds_historical.sql', 'sql/create_rb_odds_historical.sql'),
+    ('historical_odds/create_ra_odds_historical.sql', 'sql/create_ra_odds_historical.sql'),
     ('live_odds/create_ra_odds_live.sql', 'sql/create_ra_odds_live.sql')
 ]
 

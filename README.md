@@ -7,7 +7,7 @@ Two microservices for collecting horse racing odds data from The Racing API.
 ### 1. **Historical Odds Service** (`historical_odds/`)
 - Backfills historical data from 2015 to present
 - Runs daily at 1 AM UK time to fetch completed races
-- Stores in `rb_odds_historical` table
+- Stores in `ra_odds_historical` table
 
 ### 2. **Live Odds Service** (`live_odds/`)
 - Real-time odds collection with smart scheduling
@@ -21,7 +21,7 @@ Two microservices for collecting horse racing odds data from The Racing API.
 1. **Supabase Database Setup**
    ```bash
    # Run in Supabase SQL Editor:
-   # 1. Tables from historical_odds/create_rb_odds_historical.sql
+   # 1. Tables from historical_odds/create_ra_odds_historical.sql
    # 2. Tables from live_odds/create_ra_odds_live.sql
    # 3. Service state table from create_service_state_table.sql
    ```
@@ -106,7 +106,7 @@ SELECT
     MIN(race_date) as earliest_date,
     MAX(race_date) as latest_date,
     COUNT(DISTINCT race_date) as dates_covered
-FROM rb_odds_historical;
+FROM ra_odds_historical;
 ```
 
 **Live Service Activity:**
@@ -153,7 +153,7 @@ DarkHorses-Backend/
 │   ├── cron_historical.py        # Main scheduler
 │   ├── historical_odds_fetcher.py
 │   ├── historical_odds_client.py
-│   └── create_rb_odds_historical.sql
+│   └── create_ra_odds_historical.sql
 │
 └── live_odds/                     # Live odds service
     ├── Dockerfile

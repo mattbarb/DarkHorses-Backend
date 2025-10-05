@@ -1,5 +1,5 @@
 """
-Statistics collector for rb_odds_historical table
+Statistics collector for ra_odds_historical table
 """
 import logging
 from typing import Dict, List
@@ -9,14 +9,14 @@ logger = logging.getLogger(__name__)
 
 
 class HistoricalOddsCollector:
-    """Collects statistics for rb_odds_historical table"""
+    """Collects statistics for ra_odds_historical table"""
 
     def __init__(self, db_connection):
         self.db = db_connection
-        self.table_name = 'rb_odds_historical'
+        self.table_name = 'ra_odds_historical'
 
     def collect_all_stats(self) -> Dict:
-        """Collect all rb_odds_historical statistics"""
+        """Collect all ra_odds_historical statistics"""
         logger.info(f"Collecting statistics for {self.table_name}...")
 
         return {

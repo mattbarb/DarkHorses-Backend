@@ -52,7 +52,7 @@ odds_api/
    - Stops updating when race starts
    - Unique constraint: `(race_id, horse_id, bookmaker_id)`
 
-2. **`rb_odds_historical`** - Historical race results and final odds
+2. **`ra_odds_historical`** - Historical race results and final odds
    - Backfilled from 2015 to present
    - Daily updates at 1:00 AM UK time
    - Includes finishing positions and race results
@@ -319,7 +319,7 @@ SELECT
     MIN(race_date) as earliest,
     MAX(race_date) as latest,
     COUNT(DISTINCT race_date) as dates_covered
-FROM rb_odds_historical;
+FROM ra_odds_historical;
 
 -- Verify no exchange columns exist
 SELECT column_name
@@ -353,7 +353,7 @@ AND column_name LIKE '%back%' OR column_name LIKE '%lay%';
 
 ### Schema and Configuration
 - `sql/create_ra_odds_live.sql` - Live odds table schema (31 columns)
-- `sql/create_rb_odds_historical.sql` - Historical odds table schema
+- `sql/create_ra_odds_historical.sql` - Historical odds table schema
 - `sql/migrate_remove_exchange_columns.sql` - Exchange columns removal migration
 - `render.yaml` - Render.com deployment configuration
 

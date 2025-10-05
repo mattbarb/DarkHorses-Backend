@@ -21,8 +21,8 @@ class ConsoleFormatter:
         output.append("")
 
         # Historical odds stats
-        if 'rb_odds_historical' in stats:
-            output.append(self._format_historical_stats(stats['rb_odds_historical']))
+        if 'ra_odds_historical' in stats:
+            output.append(self._format_historical_stats(stats['ra_odds_historical']))
 
         # Live odds stats
         if 'ra_odds_live' in stats:
@@ -40,7 +40,7 @@ class ConsoleFormatter:
         output = []
 
         output.append("┌" + "─" * 78 + "┐")
-        output.append("│ TABLE: rb_odds_historical" + " " * 52 + "│")
+        output.append("│ TABLE: ra_odds_historical" + " " * 52 + "│")
         output.append("└" + "─" * 78 + "┘")
         output.append("")
 

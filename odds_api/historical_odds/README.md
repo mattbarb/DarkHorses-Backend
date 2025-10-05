@@ -28,7 +28,7 @@ Continuous backfill of historical horse racing odds from 2015 to current date wi
 
 - Fetches final odds at race start time
 - Captures odds from all available bookmakers
-- Stores in Supabase database (`rb_odds_historical` table)
+- Stores in Supabase database (`ra_odds_historical` table)
 - Automatic course name mapping
 - Comprehensive error handling and logging
 - Resume capability for interrupted backfills
@@ -54,7 +54,7 @@ BACKFILL_START_YEAR=2015  # Optional, defaults to 2015
 - `backfill_historical.py` - Backfill logic and missing date detection
 - `schema_mapping.py` - Maps API data to database schema
 - `course_lookup.py` - Course name standardization
-- `create_rb_odds_historical.sql` - Database schema
+- `create_ra_odds_historical.sql` - Database schema
 - `requirements.txt` - Python dependencies
 - `Dockerfile` - Container configuration
 
@@ -93,7 +93,7 @@ python3 backfill_historical.py --start-year 2015
 
 ## Database Schema
 
-Stores odds in `rb_odds_historical` table:
+Stores odds in `ra_odds_historical` table:
 
 ```sql
 - race_id: Race identifier
@@ -163,7 +163,7 @@ SELECT
     MIN(race_date) as earliest_date,
     MAX(race_date) as latest_date,
     COUNT(DISTINCT race_date) as dates_with_data
-FROM rb_odds_historical;
+FROM ra_odds_historical;
 
 -- Find missing dates
 SELECT generate_series(
@@ -173,7 +173,7 @@ SELECT generate_series(
 )::date as missing_date
 EXCEPT
 SELECT DISTINCT race_date
-FROM rb_odds_historical
+FROM ra_odds_historical
 ORDER BY missing_date;
 ```
 

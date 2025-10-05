@@ -170,7 +170,7 @@ GET /api/statistics?table=all
     },
     "historical": {
       "timestamp": "2025-10-04T12:00:00",
-      "rb_odds_historical": {
+      "ra_odds_historical": {
         ...
       }
     }

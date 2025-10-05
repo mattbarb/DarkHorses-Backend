@@ -124,7 +124,7 @@ def version_check():
         "checks": {
             "database_url_configured": bool(database_url),
             "supabase_configured": bool(supabase_url),
-            "historical_table": "rb_odds_historical (date_of_race, track, race_time)"
+            "historical_table": "ra_odds_historical (date_of_race, track, race_time)"
         }
     }
 
@@ -407,11 +407,11 @@ def get_historical_odds(
     """
     Get historical odds data
 
-    Returns historical odds from rb_odds_historical table with optional filtering
-    Note: rb_odds_historical uses 'date_of_race' and 'track' (not 'race_date' and 'course')
+    Returns historical odds from ra_odds_historical table with optional filtering
+    Note: ra_odds_historical uses 'date_of_race' and 'track' (not 'race_date' and 'course')
     """
     try:
-        query = supabase.table('rb_odds_historical').select('*')
+        query = supabase.table('ra_odds_historical').select('*')
 
         # Apply filters (use correct column names: date_of_race, track)
         if race_date:
@@ -881,7 +881,7 @@ def get_scheduler_status():
                     "daily_fetch": "1:00 AM UK time",
                     "coverage": "GB & IRE races from 2015 onwards",
                     "data_includes": "Final odds, results, and race metadata",
-                    "tables": ["rb_odds_historical"]
+                    "tables": ["ra_odds_historical"]
                 },
                 "last_run": live_status.get("historical_odds", {}).get("last_run"),
                 "last_success": live_status.get("historical_odds", {}).get("last_success"),
@@ -1004,7 +1004,7 @@ def debug_historical_summary():
                 ipv4_url = database_url.replace(hostname, ipv4) if ipv4 else database_url
                 conn = psycopg2.connect(ipv4_url)
                 cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM rb_odds_historical")
+                cursor.execute("SELECT COUNT(*) FROM ra_odds_historical")
                 count = cursor.fetchone()[0]
                 cursor.close()
                 conn.close()
@@ -1018,7 +1018,7 @@ def debug_historical_summary():
 
     # Test Supabase API
     try:
-        result = supabase.table('rb_odds_historical').select('*', count='exact').limit(1).execute()
+        result = supabase.table('ra_odds_historical').select('*', count='exact').limit(1).execute()
         debug_info["supabase_count"] = getattr(result, 'count', None)
         debug_info["supabase_has_data"] = bool(result.data)
         debug_info["supabase_data_length"] = len(result.data) if result.data else 0
@@ -1055,7 +1055,7 @@ def get_historical_summary():
 
                         conn = psycopg2.connect(ipv4_url)
                         cursor = conn.cursor()
-                        cursor.execute("SELECT COUNT(*) FROM rb_odds_historical")
+                        cursor.execute("SELECT COUNT(*) FROM ra_odds_historical")
                         total_count = cursor.fetchone()[0]
                         cursor.close()
                         conn.close()
@@ -1068,7 +1068,7 @@ def get_historical_summary():
         # If direct count failed, try Supabase API
         if total_count == 0:
             logger.info("Direct count was 0, trying Supabase API...")
-            count_result = supabase.table('rb_odds_historical')\
+            count_result = supabase.table('ra_odds_historical')\
                 .select('*', count='exact')\
                 .limit(1)\
                 .execute()
@@ -1081,7 +1081,7 @@ def get_historical_summary():
         logger.info(f"Final total_count: {total_count}")
 
         # Get date range (column is 'date_of_race' not 'race_date')
-        date_result = supabase.table('rb_odds_historical')\
+        date_result = supabase.table('ra_odds_historical')\
             .select('date_of_race')\
             .order('date_of_race', desc=False)\
             .limit(1)\
@@ -1090,7 +1090,7 @@ def get_historical_summary():
         earliest_date = date_result.data[0]['date_of_race'] if date_result.data else None
         logger.info(f"Earliest date: {earliest_date}")
 
-        latest_result = supabase.table('rb_odds_historical')\
+        latest_result = supabase.table('ra_odds_historical')\
             .select('date_of_race')\
             .order('date_of_race', desc=True)\
             .limit(1)\
@@ -1100,8 +1100,8 @@ def get_historical_summary():
         logger.info(f"Latest date: {latest_date}")
 
         # Get unique races count (approximate - sample first 10k by date+track+time combo)
-        # Note: rb_odds_historical doesn't have race_id, use combination of date, track, time
-        races_result = supabase.table('rb_odds_historical')\
+        # Note: ra_odds_historical doesn't have race_id, use combination of date, track, time
+        races_result = supabase.table('ra_odds_historical')\
             .select('date_of_race, track, race_time')\
             .limit(10000)\
             .execute()
