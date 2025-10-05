@@ -354,6 +354,81 @@ def refresh_statistics():
         raise HTTPException(status_code=500, detail=f"Statistics refresh failed: {str(e)}")
 
 
+@app.get("/api/statistics/debug")
+def debug_statistics_files():
+    """
+    Debug endpoint to check file system and statistics files
+
+    Shows where files should be and what actually exists
+    """
+    try:
+        import os
+        from pathlib import Path
+
+        debug_info = {
+            "current_working_directory": os.getcwd(),
+            "main_py_location": str(Path(__file__).parent),
+            "expected_stats_dir": str(Path(__file__).parent / 'odds_statistics' / 'output'),
+            "stats_dir_exists": False,
+            "files_found": [],
+            "directory_listing": []
+        }
+
+        # Check if stats directory exists
+        stats_dir = Path(__file__).parent / 'odds_statistics' / 'output'
+        debug_info["stats_dir_exists"] = stats_dir.exists()
+
+        if stats_dir.exists():
+            # List all files in the directory
+            debug_info["files_found"] = [f.name for f in stats_dir.iterdir() if f.is_file()]
+            debug_info["directory_listing"] = [
+                {
+                    "name": f.name,
+                    "size": f.stat().st_size,
+                    "modified": datetime.fromtimestamp(f.stat().st_mtime).isoformat()
+                }
+                for f in stats_dir.iterdir() if f.is_file()
+            ]
+        else:
+            # Check if parent directory exists
+            parent_dir = Path(__file__).parent / 'odds_statistics'
+            debug_info["odds_statistics_dir_exists"] = parent_dir.exists()
+
+            if parent_dir.exists():
+                debug_info["odds_statistics_contents"] = [f.name for f in parent_dir.iterdir()]
+
+        # Check from config perspective
+        try:
+            import sys
+            stats_path = Path(__file__).parent / 'odds_statistics'
+            sys.path.insert(0, str(stats_path))
+            from config import Config
+
+            debug_info["config_output_dir"] = Config.DEFAULT_OUTPUT_DIR
+            debug_info["config_dir_exists"] = Path(Config.DEFAULT_OUTPUT_DIR).exists()
+
+            if Path(Config.DEFAULT_OUTPUT_DIR).exists():
+                debug_info["config_dir_files"] = [
+                    f.name for f in Path(Config.DEFAULT_OUTPUT_DIR).iterdir() if f.is_file()
+                ]
+        except Exception as e:
+            debug_info["config_error"] = str(e)
+
+        return {
+            "success": True,
+            "debug_info": debug_info
+        }
+
+    except Exception as e:
+        logger.error(f"Debug endpoint error: {e}")
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 @app.get("/api/scheduler-status")
 def get_scheduler_status():
     """
