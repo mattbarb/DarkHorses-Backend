@@ -322,28 +322,21 @@ def refresh_statistics():
     try:
         logger.info("📊 Manual statistics refresh requested")
 
-        # Check DATABASE_URL first
-        database_url = os.getenv('DATABASE_URL')
-        if not database_url:
-            return {
-                "success": False,
-                "message": "DATABASE_URL environment variable not set",
-                "diagnostic": "Statistics require direct PostgreSQL connection"
-            }
-
         # Import the update function
         import sys
         stats_path = Path(__file__).parent / 'odds_statistics'
         sys.path.insert(0, str(stats_path))
 
-        logger.info(f"📍 Stats path: {stats_path}")
-        logger.info(f"📍 DATABASE_URL configured: {bool(database_url)}")
-
         from update_stats import update_all_statistics
         from config import Config
 
-        logger.info(f"📍 Config.DEFAULT_OUTPUT_DIR: {Config.DEFAULT_OUTPUT_DIR}")
         logger.info(f"📍 Config.DATABASE_URL set: {bool(Config.DATABASE_URL)}")
+
+        # Mask password for logging
+        if Config.DATABASE_URL and '@' in Config.DATABASE_URL:
+            parts = Config.DATABASE_URL.split('@')
+            masked_url = f"***@{parts[1]}"
+            logger.info(f"📍 Using URL: {masked_url}")
 
         logger.info("📍 Calling update_all_statistics()...")
         result = update_all_statistics(save_to_file=True)
