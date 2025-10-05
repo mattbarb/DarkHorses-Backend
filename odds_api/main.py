@@ -573,6 +573,34 @@ def debug_statistics_files():
         }
 
 
+@app.get("/api/scheduler-health")
+def get_scheduler_health():
+    """
+    Check if scheduler thread is alive and running
+    """
+    import threading
+
+    # Get all threads
+    threads = threading.enumerate()
+    scheduler_threads = [t for t in threads if 'scheduler' in t.name.lower() or t.name == 'Thread-1']
+
+    return {
+        "total_threads": len(threads),
+        "scheduler_threads_found": len(scheduler_threads),
+        "thread_names": [t.name for t in threads],
+        "scheduler_thread_alive": len(scheduler_threads) > 0,
+        "scheduler_threads": [
+            {
+                "name": t.name,
+                "alive": t.is_alive(),
+                "daemon": t.daemon,
+                "ident": t.ident
+            }
+            for t in scheduler_threads
+        ]
+    }
+
+
 @app.get("/api/scheduler-status")
 def get_scheduler_status():
     """
