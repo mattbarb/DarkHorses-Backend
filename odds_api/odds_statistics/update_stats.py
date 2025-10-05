@@ -21,7 +21,7 @@ from database import DatabaseConnection
 from collectors import HistoricalOddsCollector, LiveOddsCollector
 from formatters import JSONFormatter
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('STATISTICS')
 
 
 def update_statistics(table: str = 'live', save_to_file: bool = True) -> dict:
@@ -96,36 +96,54 @@ def update_all_statistics(save_to_file: bool = True) -> dict:
         Dictionary containing statistics for both tables
     """
     try:
+        logger.info("📍 Starting statistics collection...")
+        logger.info(f"📍 DATABASE_URL configured: {bool(Config.DATABASE_URL)}")
+
+        if not Config.DATABASE_URL:
+            logger.error("❌ DATABASE_URL not set - cannot collect statistics")
+            return {}
+
+        logger.info("📍 Connecting to database...")
         db = DatabaseConnection(Config.DATABASE_URL)
+        logger.info("✅ Database connection established")
 
         stats = {
             'timestamp': datetime.now().isoformat(),
         }
 
         # Collect both tables
+        logger.info("📍 Collecting historical odds statistics...")
         historical_collector = HistoricalOddsCollector(db)
-        live_collector = LiveOddsCollector(db)
-
         stats['rb_odds_historical'] = historical_collector.collect_all_stats()
-        stats['ra_odds_live'] = live_collector.collect_all_stats()
+        logger.info(f"✅ Historical stats collected: {len(stats['rb_odds_historical'])} keys")
 
-        logger.info("✅ All statistics updated")
+        logger.info("📍 Collecting live odds statistics...")
+        live_collector = LiveOddsCollector(db)
+        stats['ra_odds_live'] = live_collector.collect_all_stats()
+        logger.info(f"✅ Live stats collected: {len(stats['ra_odds_live'])} keys")
+
+        logger.info("✅ All statistics collected successfully")
 
         # Save to JSON file if requested
         if save_to_file:
             output_dir = Path(Config.DEFAULT_OUTPUT_DIR)
+            logger.info(f"📍 Creating output directory: {output_dir}")
             output_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"✅ Output directory ready: {output_dir}")
 
             filename = f"all_stats_latest.json"
             filepath = output_dir / filename
 
+            logger.info("📍 Formatting statistics as JSON...")
             formatter = JSONFormatter()
             json_output = formatter.format_stats(stats)
 
+            logger.info(f"📍 Writing to file: {filepath}")
             filepath.write_text(json_output)
-            logger.info(f"📄 Statistics saved to {filepath}")
+            logger.info(f"📄 Statistics saved to {filepath} ({len(json_output)} bytes)")
 
         db.disconnect()
+        logger.info("✅ Database connection closed")
 
         return stats
 

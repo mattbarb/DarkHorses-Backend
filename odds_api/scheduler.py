@@ -132,14 +132,23 @@ class ConsolidatedScheduler:
 
         try:
             logger.info("📊 Updating statistics...")
-            update_all_statistics(save_to_file=True)
-            logger.info("✅ Statistics updated successfully")
+            logger.info("📍 Calling update_all_statistics() from odds_statistics module...")
+
+            result = update_all_statistics(save_to_file=True)
+
+            if result:
+                logger.info(f"✅ Statistics updated successfully - {len(result)} keys returned")
+                logger.info(f"📄 Output directory: {Path(__file__).parent / 'odds_statistics' / 'output'}")
+            else:
+                logger.warning("⚠️ Statistics update returned empty result")
 
             self.status["statistics"]["last_success"] = datetime.now().isoformat()
             self.status["statistics"]["status"] = "success"
             self._save_status()
         except Exception as e:
             logger.error(f"❌ Statistics update failed: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             self.status["statistics"]["status"] = "failed"
             self.status["statistics"]["error"] = str(e)
             self._save_status()
