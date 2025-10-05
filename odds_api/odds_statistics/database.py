@@ -11,7 +11,7 @@ from typing import List, Dict, Optional, Tuple
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('STATISTICS_DB')
 
 
 class DatabaseConnection:
@@ -32,26 +32,34 @@ class DatabaseConnection:
             match = re.search(r'@([^:/?]+)', connection_string)
             if match:
                 hostname = match.group(1)
-                logger.info(f"Resolving {hostname} to IPv4...")
+                logger.info(f"🔍 Resolving {hostname} to IPv4...")
 
                 # Resolve to IPv4 only (socket.AF_INET)
-                addr_info = socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_STREAM)
-                if addr_info:
-                    ipv4_address = addr_info[0][4][0]
-                    logger.info(f"✅ Resolved {hostname} → {ipv4_address} (IPv4)")
-
-                    # Replace hostname with IPv4 address in connection string
-                    return connection_string.replace(hostname, ipv4_address)
-                else:
-                    logger.warning(f"No IPv4 address found for {hostname}")
+                try:
+                    addr_info = socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_STREAM)
+                    if addr_info:
+                        ipv4_address = addr_info[0][4][0]
+                        ipv4_conn_string = connection_string.replace(hostname, ipv4_address)
+                        logger.info(f"✅ Resolved {hostname} → {ipv4_address} (IPv4)")
+                        logger.info(f"📍 Original: ...@{hostname}...")
+                        logger.info(f"📍 Updated:  ...@{ipv4_address}...")
+                        return ipv4_conn_string
+                    else:
+                        logger.error(f"❌ No IPv4 address found for {hostname}")
+                        logger.error("⚠️  Using original connection string - IPv6 may fail on Render")
+                except socket.gaierror as dns_e:
+                    logger.error(f"❌ DNS resolution failed: {dns_e}")
+                    logger.error("⚠️  Using original connection string - connection may fail")
+            else:
+                logger.warning("⚠️  Could not extract hostname from connection string")
 
             return connection_string
 
-        except socket.gaierror as e:
-            logger.warning(f"DNS resolution failed for hostname, will try direct connection: {e}")
-            return connection_string
         except Exception as e:
-            logger.warning(f"Could not force IPv4, using original connection string: {e}")
+            logger.error(f"❌ IPv4 resolution error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            logger.error("⚠️  Using original connection string - connection may fail")
             return connection_string
 
     def connect(self) -> psycopg2.extensions.connection:
