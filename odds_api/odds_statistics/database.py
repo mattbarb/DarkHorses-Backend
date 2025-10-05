@@ -40,19 +40,33 @@ class DatabaseConnection:
                 # Method 1: Try subprocess dig (most reliable on Linux/Render)
                 try:
                     import subprocess
+                    logger.info(f"📍 Attempting DNS resolution via dig command...")
                     result = subprocess.run(
                         ['dig', '+short', 'A', hostname],
                         capture_output=True,
                         text=True,
                         timeout=5
                     )
+                    logger.info(f"📍 dig returncode: {result.returncode}")
+                    logger.info(f"📍 dig stdout: '{result.stdout.strip()}'")
+                    logger.info(f"📍 dig stderr: '{result.stderr.strip()}'")
+
                     if result.returncode == 0 and result.stdout.strip():
                         # Take first A record
                         addresses = result.stdout.strip().split('\n')
-                        ipv4_address = addresses[0]
-                        logger.info(f"✅ Resolved via dig: {hostname} → {ipv4_address} (IPv4)")
+                        # Filter out any non-IP lines (sometimes dig returns CNAME records)
+                        for addr in addresses:
+                            addr = addr.strip()
+                            if addr and not addr.endswith('.'):  # Not a hostname
+                                ipv4_address = addr
+                                logger.info(f"✅ Resolved via dig: {hostname} → {ipv4_address} (IPv4)")
+                                break
+                    else:
+                        logger.warning(f"dig returned no results or failed")
+                except FileNotFoundError:
+                    logger.warning("dig command not found on system")
                 except Exception as dig_e:
-                    logger.warning(f"dig resolution failed: {dig_e}")
+                    logger.warning(f"dig resolution exception: {dig_e}")
 
                 # Method 2: Try gethostbyname if dig failed
                 if not ipv4_address:
