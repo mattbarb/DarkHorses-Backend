@@ -37,12 +37,13 @@ class DatabaseConnection:
                 # Try multiple methods to resolve to IPv4
                 ipv4_address = None
 
-                # Method 1: Try subprocess dig (most reliable on Linux/Render)
+                # Method 1: Try subprocess dig with public DNS (most reliable on Linux/Render)
                 try:
                     import subprocess
-                    logger.info(f"📍 Attempting DNS resolution via dig command...")
+                    logger.info(f"📍 Attempting DNS resolution via dig command with Google DNS...")
+                    # Use Google's public DNS 8.8.8.8 to bypass Render's DNS issues
                     result = subprocess.run(
-                        ['dig', '+short', 'A', hostname],
+                        ['dig', '@8.8.8.8', '+short', 'A', hostname],
                         capture_output=True,
                         text=True,
                         timeout=5
