@@ -439,6 +439,57 @@ def get_courses():
         raise HTTPException(status_code=500, detail=f"Error fetching courses: {str(e)}")
 
 
+@app.get("/api/historical-odds/debug")
+def debug_historical_summary():
+    """Debug endpoint to see why count is failing"""
+    debug_info = {
+        "database_url_configured": bool(database_url),
+        "supabase_url_configured": bool(supabase_url),
+        "errors": []
+    }
+
+    # Test direct PostgreSQL
+    if database_url:
+        try:
+            import socket
+            import re
+            # Force IPv4 like we do in statistics module
+            match = re.search(r'@([^:/?]+)', database_url)
+            if match:
+                hostname = match.group(1)
+                addr_info = socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_STREAM)
+                ipv4 = addr_info[0][4][0] if addr_info else None
+                debug_info["hostname"] = hostname
+                debug_info["ipv4_resolved"] = ipv4
+
+                # Try connection with IPv4
+                ipv4_url = database_url.replace(hostname, ipv4) if ipv4 else database_url
+                conn = psycopg2.connect(ipv4_url)
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM rb_odds_historical")
+                count = cursor.fetchone()[0]
+                cursor.close()
+                conn.close()
+                debug_info["postgresql_count"] = count
+                debug_info["postgresql_success"] = True
+        except Exception as e:
+            debug_info["postgresql_error"] = str(e)
+            debug_info["postgresql_success"] = False
+            import traceback
+            debug_info["postgresql_traceback"] = traceback.format_exc()
+
+    # Test Supabase API
+    try:
+        result = supabase.table('rb_odds_historical').select('*', count='exact').limit(1).execute()
+        debug_info["supabase_count"] = getattr(result, 'count', None)
+        debug_info["supabase_has_data"] = bool(result.data)
+        debug_info["supabase_data_length"] = len(result.data) if result.data else 0
+    except Exception as e:
+        debug_info["supabase_error"] = str(e)
+
+    return debug_info
+
+
 @app.get("/api/historical-odds/summary")
 def get_historical_summary():
     """
@@ -447,9 +498,34 @@ def get_historical_summary():
     try:
         logger.info("Fetching historical odds summary...")
 
-        # Try direct PostgreSQL count first (most reliable)
-        total_count = get_direct_postgres_count('rb_odds_historical')
-        logger.info(f"Direct PostgreSQL count: {total_count}")
+        # Apply IPv4 fix for DATABASE_URL (same as statistics module)
+        total_count = 0
+        if database_url:
+            try:
+                import socket
+                import re
+                # Force IPv4 connection
+                match = re.search(r'@([^:/?]+)', database_url)
+                if match:
+                    hostname = match.group(1)
+                    logger.info(f"Resolving {hostname} to IPv4...")
+                    addr_info = socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_STREAM)
+                    if addr_info:
+                        ipv4_address = addr_info[0][4][0]
+                        logger.info(f"Resolved to IPv4: {ipv4_address}")
+                        ipv4_url = database_url.replace(hostname, ipv4_address)
+
+                        conn = psycopg2.connect(ipv4_url)
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT COUNT(*) FROM rb_odds_historical")
+                        total_count = cursor.fetchone()[0]
+                        cursor.close()
+                        conn.close()
+                        logger.info(f"Direct PostgreSQL count: {total_count}")
+            except Exception as e:
+                logger.error(f"PostgreSQL count failed: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
 
         # If direct count failed, try Supabase API
         if total_count == 0:
@@ -459,19 +535,10 @@ def get_historical_summary():
                 .limit(1)\
                 .execute()
 
-            # Log the response structure for debugging
-            logger.info(f"Count result type: {type(count_result)}")
-
             # Try different ways to access count
             if hasattr(count_result, 'count'):
                 total_count = count_result.count
                 logger.info(f"Got count from .count attribute: {total_count}")
-            elif hasattr(count_result, 'headers') and 'content-range' in count_result.headers:
-                # Parse from content-range header: "0-999/1234"
-                content_range = count_result.headers.get('content-range', '')
-                if '/' in content_range:
-                    total_count = int(content_range.split('/')[-1])
-                    logger.info(f"Got count from content-range header: {total_count}")
 
         logger.info(f"Final total_count: {total_count}")
 
