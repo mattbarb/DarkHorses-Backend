@@ -297,8 +297,17 @@
 
                 let liveOddsHtml = `
                     <div class="schedule-item">
-                        <h4>🏇 Live Odds Fetcher (ADAPTIVE)</h4>
-                        <div class="schedule-time">⏰ ${data.schedulers.live_odds.schedule}</div>
+                        <h4>🏇 Live Odds Fetcher</h4>
+
+                        <!-- Adaptive Schedule Details -->
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 0.85em;">
+                            <strong style="color: #667eea;">📋 Adaptive Schedule:</strong><br>
+                            <div style="padding: 3px 0;"><span style="color: #dc3545;">●</span> <strong>10 seconds</strong> when race imminent (<5 min away)</div>
+                            <div style="padding: 3px 0;"><span style="color: #fd7e14;">●</span> <strong>60 seconds</strong> when race soon (<30 min away)</div>
+                            <div style="padding: 3px 0;"><span style="color: #ffc107;">●</span> <strong>5 minutes</strong> when race upcoming (<2 hours away)</div>
+                            <div style="padding: 3px 0;"><span style="color: #28a745;">●</span> <strong>15 minutes</strong> default check interval</div>
+                        </div>
+
                         <div class="schedule-time">📍 ${data.schedulers.live_odds.details.coverage}</div>`;
 
                 // Show next check info if available
@@ -306,14 +315,21 @@
                     const interval = data.schedulers.live_odds.next_interval;
                     let intervalText = interval ? `${interval}s` : 'calculating...';
                     if (interval >= 60) intervalText = `${Math.floor(interval/60)}m`;
+
+                    // Determine urgency color based on interval
+                    let urgencyColor = interval <= 10 ? '#dc3545' :
+                                      interval <= 60 ? '#fd7e14' :
+                                      interval <= 300 ? '#ffc107' : '#28a745';
+
                     liveOddsHtml += `
-                        <div class="schedule-time" style="background: #e7f3ff; padding: 5px; margin-top: 5px; border-radius: 3px;">
-                            🎯 Next: ${intervalText} - ${data.schedulers.live_odds.next_check}
+                        <div class="schedule-time" style="background: ${urgencyColor}22; padding: 8px; margin-top: 8px; border-radius: 5px; border-left: 3px solid ${urgencyColor};">
+                            <strong style="color: ${urgencyColor};">🎯 Next Check:</strong> ${intervalText}<br>
+                            <span style="font-size: 0.9em; color: #666;">${data.schedulers.live_odds.next_check}</span>
                         </div>`;
                 }
 
                 liveOddsHtml += `
-                        <div class="schedule-time">
+                        <div class="schedule-time" style="margin-top: 8px;">
                             ✅ Last Success: ${formatDate(data.schedulers.live_odds.last_success)}
                         </div>
                         <div class="schedule-time" style="font-size: 0.85em; color: #999;">

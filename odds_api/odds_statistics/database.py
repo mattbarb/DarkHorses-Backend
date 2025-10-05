@@ -34,21 +34,19 @@ class DatabaseConnection:
                 hostname = match.group(1)
                 logger.info(f"🔍 Resolving {hostname} to IPv4...")
 
-                # Resolve to IPv4 only (socket.AF_INET)
+                # Resolve to IPv4 using gethostbyname (more reliable than getaddrinfo on Render)
                 try:
-                    addr_info = socket.getaddrinfo(hostname, None, socket.AF_INET, socket.SOCK_STREAM)
-                    if addr_info:
-                        ipv4_address = addr_info[0][4][0]
+                    ipv4_address = socket.gethostbyname(hostname)
+                    if ipv4_address:
                         ipv4_conn_string = connection_string.replace(hostname, ipv4_address)
                         logger.info(f"✅ Resolved {hostname} → {ipv4_address} (IPv4)")
-                        logger.info(f"📍 Original: ...@{hostname}...")
-                        logger.info(f"📍 Updated:  ...@{ipv4_address}...")
+                        logger.info(f"📍 Using IPv4 address for connection to avoid Render IPv6 issue")
                         return ipv4_conn_string
                     else:
                         logger.error(f"❌ No IPv4 address found for {hostname}")
                         logger.error("⚠️  Using original connection string - IPv6 may fail on Render")
                 except socket.gaierror as dns_e:
-                    logger.error(f"❌ DNS resolution failed: {dns_e}")
+                    logger.error(f"❌ DNS resolution failed with gethostbyname: {dns_e}")
                     logger.error("⚠️  Using original connection string - connection may fail")
             else:
                 logger.warning("⚠️  Could not extract hostname from connection string")
