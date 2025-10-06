@@ -1,13 +1,15 @@
-# DarkHorses Backend Workers
+# DarkHorses Odds Workers
 
-Background data collection service for horse racing odds from The Racing API.
+Background data collection service for horse racing **odds** from The Racing API.
+
+**Note**: This repository handles ODDS data only. For reference data (courses, jockeys, trainers, etc.), see [DarkHorses-Masters-Workers](https://github.com/mattbarb/DarkHorses-Masters-Workers).
 
 ## 🏗️ Repository Structure
 
 This repository contains **ONE consolidated worker service** with organized module folders:
 
 ```
-DarkHorses-Backend-Workers/
+DarkHorses-Odds-Workers/
 ├── start_workers.py           # Main entry point (runs all 3 schedulers)
 ├── scheduler.py               # Consolidated scheduler
 ├── requirements.txt           # Combined dependencies
@@ -28,9 +30,16 @@ DarkHorses-Backend-Workers/
 │
 ├── statistics-worker/         # Statistics module
 │   ├── update_stats.py        # Statistics updater
-│   ├── database.py            # Direct PostgreSQL queries
+│   ├── supabase_database.py   # Supabase SDK adapter
+│   ├── database.py            # Legacy PostgreSQL (fallback)
 │   ├── collectors/            # Data collectors
 │   └── formatters/            # Output formatters
+│
+├── tests/                     # Comprehensive test suite
+│   ├── test_live_odds_worker.py
+│   ├── test_historical_odds_worker.py
+│   ├── test_statistics_worker.py
+│   └── run_all_tests.py
 │
 ├── sql/                       # Database schemas
 │   ├── create_ra_odds_live.sql
@@ -47,6 +56,9 @@ DarkHorses-Backend-Workers/
 - **Statistics**: Every 10 minutes
 
 **Cost**: $7/month (ONE Render.com Starter service)
+
+**Related Repository**:
+- [DarkHorses-Masters-Workers](https://github.com/mattbarb/DarkHorses-Masters-Workers) - Reference data (courses, jockeys, trainers, etc.) - $7/month
 
 **Why consolidated?**
 - Lower cost ($7 vs $21/month for 3 services)
