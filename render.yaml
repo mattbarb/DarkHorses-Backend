@@ -4,8 +4,7 @@ services:
     name: darkhorses-workers
     env: python
     plan: starter  # Required for always-on (not free tier)
-    runtime: python-3.12
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python3 start_workers.py
     envVars:
       - key: RACING_API_USERNAME
