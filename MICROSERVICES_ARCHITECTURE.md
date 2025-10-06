@@ -1,8 +1,12 @@
-# DarkHorses Backend - Microservices Architecture
+# DarkHorses Backend Workers - Microservices Architecture
 
-## Overview
+⚠️ **NOTE**: This document describes the old 2-service architecture. The system has been further restructured into 3 independent workers + 2 APIs. See `README.md` and `RESTRUCTURE_SUMMARY.md` for current architecture.
 
-The DarkHorses backend has been restructured from a monolithic application into a microservices architecture with two separate services:
+---
+
+## Old Architecture (Deprecated)
+
+The DarkHorses backend was restructured from a monolithic application into a microservices architecture with two separate services:
 
 1. **Workers Service** - Background data collection (no HTTP server)
 2. **API Service** - Read-only HTTP API and dashboard UI

@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
-DarkHorses Racing Odds API (Read-Only Service)
+DarkHorses Racing Odds API
 FastAPI server providing access to live odds, historical odds, and statistics
-
-This is a read-only API service. Data collection is handled by separate background workers.
 """
 
 from fastapi import FastAPI, HTTPException, Query
@@ -501,7 +499,88 @@ def get_statistics(
         raise HTTPException(status_code=500, detail=f"Error loading statistics: {str(e)}")
 
 
-# Statistics refresh is handled by background workers - endpoint removed in API-only service
+@app.post("/api/statistics/refresh")
+def refresh_statistics():
+    """
+    Manually trigger statistics collection
+
+    Useful for testing or forcing an immediate update
+    """
+    try:
+        logger.info("📊 Manual statistics refresh requested")
+
+        # Import the update function
+        import sys
+        stats_path = Path(__file__).parent / 'odds_statistics'
+        sys.path.insert(0, str(stats_path))
+
+        from update_stats import update_all_statistics
+        from config import Config
+
+        logger.info(f"📍 Config.DATABASE_URL set: {bool(Config.DATABASE_URL)}")
+
+        # Mask password for logging
+        if Config.DATABASE_URL and '@' in Config.DATABASE_URL:
+            parts = Config.DATABASE_URL.split('@')
+            masked_url = f"***@{parts[1]}"
+            logger.info(f"📍 Using URL: {masked_url}")
+
+        logger.info("📍 Calling update_all_statistics()...")
+        result = update_all_statistics(save_to_file=True)
+
+        if result:
+            logger.info(f"✅ Statistics refresh completed - {len(result)} keys")
+
+            # Check if files were actually created
+            output_dir = Path(Config.DEFAULT_OUTPUT_DIR)
+            files_created = []
+            if output_dir.exists():
+                files_created = [f.name for f in output_dir.iterdir() if f.is_file()]
+
+            return {
+                "success": True,
+                "message": "Statistics updated successfully",
+                "timestamp": result.get('timestamp'),
+                "tables_updated": list(result.keys()),
+                "output_directory": str(output_dir),
+                "directory_exists": output_dir.exists(),
+                "files_created": files_created
+            }
+        else:
+            logger.error("❌ Statistics refresh returned empty result")
+
+            # Try to get more diagnostic info
+            try:
+                from database import DatabaseConnection
+                db = DatabaseConnection(database_url)
+                db.connect()
+                db.disconnect()
+                db_test = "Database connection successful"
+            except Exception as db_e:
+                db_test = f"Database connection failed: {str(db_e)}"
+
+            return {
+                "success": False,
+                "message": "Statistics update returned empty result",
+                "diagnostic": {
+                    "database_url_set": bool(database_url),
+                    "config_database_url_set": bool(Config.DATABASE_URL),
+                    "database_test": db_test,
+                    "stats_path": str(stats_path),
+                    "output_dir": Config.DEFAULT_OUTPUT_DIR
+                }
+            }
+
+    except Exception as e:
+        logger.error(f"❌ Manual statistics refresh failed: {e}")
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(tb)
+        return {
+            "success": False,
+            "message": f"Statistics refresh exception: {str(e)}",
+            "traceback": tb
+        }
 
 
 @app.get("/api/statistics/config-check")
@@ -724,7 +803,32 @@ def debug_statistics_files():
         }
 
 
-# Scheduler health check removed - schedulers run in separate workers service
+@app.get("/api/scheduler-health")
+def get_scheduler_health():
+    """
+    Check if scheduler thread is alive and running
+    """
+    import threading
+
+    # Get all threads
+    threads = threading.enumerate()
+    scheduler_threads = [t for t in threads if 'scheduler' in t.name.lower() or t.name == 'Thread-1']
+
+    return {
+        "total_threads": len(threads),
+        "scheduler_threads_found": len(scheduler_threads),
+        "thread_names": [t.name for t in threads],
+        "scheduler_thread_alive": len(scheduler_threads) > 0,
+        "scheduler_threads": [
+            {
+                "name": t.name,
+                "alive": t.is_alive(),
+                "daemon": t.daemon,
+                "ident": t.ident
+            }
+            for t in scheduler_threads
+        ]
+    }
 
 
 @app.get("/api/scheduler-status")
@@ -732,13 +836,10 @@ def get_scheduler_status():
     """
     Get scheduler status and configuration
 
-    Returns information about scheduled tasks and their timing.
-    This API reads status from the background workers service.
+    Returns information about scheduled tasks and their timing
     """
-    # Load status file written by background workers
-    # Workers write to: workers/logs/scheduler_status.json
-    # We read from: ../workers/logs/scheduler_status.json
-    status_file = Path(__file__).parent.parent / 'workers' / 'logs' / 'scheduler_status.json'
+    # Try to load real-time status from scheduler
+    status_file = Path(__file__).parent / 'logs' / 'scheduler_status.json'
     live_status = {}
 
     try:

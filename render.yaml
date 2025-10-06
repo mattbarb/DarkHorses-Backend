@@ -1,5 +1,5 @@
-# DarkHorses Backend - Microservices Architecture
-# Separate workers (data collection) and API (read-only) services
+# DarkHorses Backend - Workers Only
+# Background data collection service (no API)
 
 services:
   # Background Workers - Data Collection Service
@@ -27,28 +27,3 @@ services:
         value: 1
       - key: PYTHONDONTWRITEBYTECODE
         value: 1
-
-  # API Service - Read-Only Data Access
-  - type: web
-    name: darkhorses-api
-    env: python
-    plan: starter
-    rootDir: api
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: LOG_LEVEL
-        value: INFO
-      - key: PORT
-        value: 8000
-      - key: PYTHONUNBUFFERED
-        value: 1
-      - key: PYTHONDONTWRITEBYTECODE
-        value: 1
-    healthCheckPath: /health

@@ -4,23 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DarkHorses Odds API is a comprehensive horse racing odds collection system that fetches data from The Racing API and stores it in Supabase. The system runs as a unified Odds API with all components consolidated into a single process.
+**DarkHorses-Backend-Workers** is the **workers-only** data collection service for horse racing odds. It fetches data from The Racing API and stores it in Supabase. The API/frontend is managed in a separate repository and reads from the same database.
 
 ## System Architecture
 
-### Unified Odds API Architecture
+### Workers-Only Architecture
 
-**IMPORTANT**: This system runs as ONE Render.com web service - the **Odds API**.
+**IMPORTANT**: This repository contains ONLY the background workers - NO API.
 
-All components are organized under the `odds_api/` directory:
+All components are organized under the `workers/` directory:
 
 ```
-odds_api/
-├── start.py              # Main entry - runs API + scheduler together
-├── main.py               # FastAPI app + dashboard UI
-├── scheduler.py          # Background worker for all data collection
-├── static/               # Dashboard UI assets
-├── logs/                 # All service logs
+workers/
+├── start_workers.py      # Main entry - runs all schedulers
+├── scheduler.py          # Consolidated scheduler for all workers
+├── requirements.txt      # Worker dependencies
+├── logs/                 # All worker logs
 ├── live_odds/            # Real-time odds collection module
 │   ├── cron_live.py
 │   ├── live_odds_fetcher.py
@@ -34,13 +33,13 @@ odds_api/
     └── database.py
 ```
 
-**Key principle**: ONE process, ONE service, ONE deployment:
-- FastAPI server (API + Dashboard UI)
-- Live odds collection (every 5 min)
+**Key principle**: ONE Render.com web service runs all data collection:
+- Live odds collection (adaptive: 10s-15min based on race proximity)
 - Historical backfill (daily 1 AM)
 - Statistics updates (every 10 min)
+- NO HTTP server, NO API endpoints
 
-**Cost savings**: $7/month for ONE unified service instead of $21/month for three separate workers.
+**Cost**: $7/month for ONE workers service on Render.com Starter plan.
 
 ### Database Architecture
 
@@ -75,36 +74,33 @@ JSON Output (odds_statistics/output/*.json)
 
 ## Running the System
 
-### Unified Odds API (Recommended)
+### Consolidated Workers (Recommended)
 
 ```bash
-# Single command runs the complete Odds API
-cd odds_api
-python3 start.py
-
-# Access dashboard at http://localhost:8000
-# API docs at http://localhost:8000/docs
+# Single command runs all workers
+cd workers
+python3 start_workers.py
 ```
 
-This starts the complete Odds API:
-- FastAPI server (API + UI)
-- Live odds scheduler (every 5 min)
+This starts all data collection workers:
+- Live odds scheduler (adaptive intervals)
 - Historical odds scheduler (daily 1 AM)
 - Statistics updater (every 10 min)
+- NO HTTP server
 
 ### Individual Modules (Development/Testing)
 
 ```bash
 # Live odds only
-cd odds_api/live_odds
+cd workers/live_odds
 python3 cron_live.py
 
 # Historical odds only
-cd odds_api/historical_odds
+cd workers/historical_odds
 python3 cron_historical.py
 
 # Statistics only
-cd odds_api/odds_statistics
+cd workers/odds_statistics
 python3 update_stats.py --table all
 ```
 
@@ -161,58 +157,46 @@ DATABASE_URL=postgresql://postgres:password@db.supabase.co:5432/postgres
 
 ### Scheduler Timing
 
-**Live Odds** (`api/scheduler.py` line ~48):
+**Live Odds** (`workers/scheduler.py` - adaptive scheduling):
 ```python
-schedule.every(5).minutes.do(self.run_live_odds)
+# Dynamic intervals based on race proximity:
+# - 10s when race imminent (<5 min)
+# - 60s when race soon (<30 min)
+# - 5 min when race upcoming (<2 hours)
+# - 15 min default check interval
 ```
 
-**Historical Odds** (`api/scheduler.py` line ~51):
+**Historical Odds** (`workers/scheduler.py` line ~160):
 ```python
 schedule.every().day.at("01:00").do(self.run_historical_odds)
 ```
 
-**Statistics** (`api/scheduler.py` line ~54):
+**Statistics** (`workers/scheduler.py` line ~164):
 ```python
 schedule.every(10).minutes.do(self.run_statistics_update)
 ```
 
 Also triggered automatically after successful fetch cycles in both live and historical schedulers.
 
-## API Endpoints
-
-### Core Endpoints
-- `GET /` - Dashboard UI
-- `GET /health` - Health check
-- `GET /docs` - Swagger documentation
-- `GET /api/scheduler-status` - Shows scheduler configuration and timing
-
-### Data Endpoints
-- `GET /api/live-odds` - Query live odds with filters (race_date, course, bookmaker)
-- `GET /api/live-odds/upcoming-races` - Races in next 24 hours
-- `GET /api/historical-odds` - Historical odds with filters (year, course, race_date)
-- `GET /api/statistics` - Latest statistics from JSON files
-- `GET /api/bookmakers` - List of all bookmakers
-- `GET /api/courses` - List of all courses/tracks
-
 ## Deployment
 
-### Render.com - Unified Odds API Deployment (Production)
+### Render.com - Workers Deployment (Production)
 
-**Architecture**: ONE Render.com web service runs the complete Odds API.
+**Architecture**: ONE Render.com web service runs all background workers.
 
 ```bash
-# Service Configuration:
-Service Name: darkhorses-odds-api
-Service Type: Web Service
-Root Directory: odds_api
-Build Command: pip install -r ../requirements.txt
-Start Command: python3 start.py
+# Service Configuration (from render.yaml):
+Service Name: darkhorses-workers
+Service Type: Web Service (needed for always-on)
+Root Directory: workers
+Build Command: pip install -r requirements.txt
+Start Command: python3 start_workers.py
 
-# This ONE service provides:
-# 1. Complete Odds API (FastAPI server + Dashboard UI)
-# 2. Live odds scheduler (every 5 min)
-# 3. Historical odds scheduler (daily 1 AM)
-# 4. Statistics updater (every 10 min)
+# This ONE service runs:
+# 1. Live odds scheduler (adaptive intervals)
+# 2. Historical odds scheduler (daily 1 AM)
+# 3. Statistics updater (every 10 min)
+# NO HTTP server, NO API
 ```
 
 **Required Environment Variables:**
@@ -227,10 +211,10 @@ DATABASE_URL=postgresql://postgres:pass@db.supabase.co:5432/postgres
 **Critical Deployment Requirements:**
 - **Plan**: Must use Starter ($7/month) or higher - NOT free tier
 - **Why**: Free tier spins down after 15 min, stopping schedulers
-- **Cost**: $7/month for ONE service = API + all schedulers
-- **Config File**: Use `/api/render.yaml` (not root `/render.yaml`)
+- **Cost**: $7/month for ONE workers service
+- **Config File**: `render.yaml` in root
 
-The consolidated deployment saves money by running everything in ONE process instead of separate microservices.
+**Note**: The API/frontend is deployed separately in a different repository.
 
 ### Environment Variables
 
@@ -282,25 +266,21 @@ MONITOR_ENABLED=false  # Set to true for monitoring server
 **Common causes**:
 1. Free tier selected (needs Starter for always-on scheduler)
 2. Missing environment variables
-3. Root directory not set to `odds_api` in render.yaml
-4. Using `uvicorn main:app` instead of `python3 start.py`
+3. Root directory not set to `workers` in render.yaml
+4. Wrong start command (should be `python3 start_workers.py`)
 
 ## Testing
 
-### Manual Testing
+### Local Testing
 
 ```bash
-# Test live odds fetch
-curl "http://localhost:8000/api/live-odds?limit=10"
+# Run workers locally
+cd workers
+python3 start_workers.py
 
-# Test upcoming races
-curl "http://localhost:8000/api/live-odds/upcoming-races"
-
-# Test statistics
-curl "http://localhost:8000/api/statistics?table=all"
-
-# Test scheduler status
-curl "http://localhost:8000/api/scheduler-status"
+# Check logs
+tail -f workers/logs/scheduler.log
+tail -f workers/logs/workers.log
 ```
 
 ### Database Verification
@@ -331,25 +311,24 @@ AND column_name LIKE '%back%' OR column_name LIKE '%lay%';
 
 ## Important Files Reference
 
-### Core Odds API Files
-- `odds_api/start.py` - Main entry point for Odds API
-- `odds_api/main.py` - FastAPI application with all endpoints
-- `odds_api/scheduler.py` - Background worker running all schedulers
-- `odds_api/static/index.html` - Dashboard UI
+### Core Workers Files
+- `workers/start_workers.py` - Main entry point for all workers
+- `workers/scheduler.py` - Consolidated scheduler running all data collection
+- `workers/requirements.txt` - Worker dependencies
 
 ### Live Odds Module
-- `odds_api/live_odds/cron_live.py` - Live odds scheduler (lines 122, 271 are critical)
-- `odds_api/live_odds/live_odds_fetcher.py` - Parses embedded odds from Racing API
-- `odds_api/live_odds/live_odds_client.py` - Supabase upsert operations
+- `workers/live_odds/cron_live.py` - Live odds scheduler (lines 122, 271 are critical)
+- `workers/live_odds/live_odds_fetcher.py` - Parses embedded odds from Racing API
+- `workers/live_odds/live_odds_client.py` - Supabase upsert operations
 
 ### Historical Odds Module
-- `odds_api/historical_odds/cron_historical.py` - Historical odds scheduler
-- `odds_api/historical_odds/historical_odds_fetcher.py` - Fetches historical data
-- `odds_api/historical_odds/historical_odds_client.py` - Supabase client
+- `workers/historical_odds/cron_historical.py` - Historical odds scheduler
+- `workers/historical_odds/historical_odds_fetcher.py` - Fetches historical data
+- `workers/historical_odds/historical_odds_client.py` - Supabase client
 
 ### Statistics Module
-- `odds_api/odds_statistics/update_stats.py` - Statistics updater
-- `odds_api/odds_statistics/database.py` - Direct PostgreSQL for statistics queries
+- `workers/odds_statistics/update_stats.py` - Statistics updater
+- `workers/odds_statistics/database.py` - Direct PostgreSQL for statistics queries
 
 ### Schema and Configuration
 - `sql/create_ra_odds_live.sql` - Live odds table schema (31 columns)
@@ -359,19 +338,19 @@ AND column_name LIKE '%back%' OR column_name LIKE '%lay%';
 
 ## Development Workflow
 
-1. **Make changes** to any component (API, scheduler, fetcher, etc.)
-2. **Test locally** with `cd odds_api && python3 start.py`
-3. **Verify** data flow: Racing API → Parser → Database → Statistics → API
-4. **Check logs** in `odds_api/logs/scheduler.log` for errors
+1. **Make changes** to any component (scheduler, fetcher, etc.)
+2. **Test locally** with `cd workers && python3 start_workers.py`
+3. **Verify** data flow: Racing API → Parser → Database → Statistics
+4. **Check logs** in `workers/logs/scheduler.log` for errors
 5. **Deploy** by pushing to GitHub (Render auto-deploys)
 
 ## Performance Notes
 
-- Expected load: ~50 database queries/min (scheduler + API)
-- Memory usage: ~200-400MB for consolidated system
-- API handles ~1000 req/min on Starter plan
+- Expected load: ~50 database writes/min (schedulers only)
+- Memory usage: ~200-300MB for workers
 - Live odds updates: ~858 odds per 3 races (26 bookmakers × 33 horses)
 - Historical backfill rate: ~100 dates per cycle
+- No HTTP traffic (workers-only service)
 
 ## Schema Evolution
 

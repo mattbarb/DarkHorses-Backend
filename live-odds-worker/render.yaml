@@ -1,0 +1,20 @@
+services:
+  - type: worker
+    name: darkhorses-live-odds-worker
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 cron_live.py
+    envVars:
+      - key: RACING_API_USERNAME
+        sync: false
+      - key: RACING_API_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PYTHONUNBUFFERED
+        value: 1

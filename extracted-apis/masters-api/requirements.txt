@@ -1,0 +1,16 @@
+# Racing API Masters - Web Service Requirements
+# FastAPI web service for exposing racing data
+
+# Web Framework
+fastapi>=0.104.0           # FastAPI framework
+uvicorn[standard]>=0.24.0  # ASGI server
+
+# Database
+psycopg2-binary>=2.9.9     # PostgreSQL adapter
+
+# Environment
+python-dotenv>=1.0.0       # Environment variables
+
+# Optional (uncomment if needed)
+# pydantic>=2.0.0          # Data validation (included with FastAPI)
+# python-multipart>=0.0.6  # For form data (if needed)
