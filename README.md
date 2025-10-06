@@ -29,23 +29,20 @@ DarkHorses-Backend-Workers/
     └── README_WORKER.md
 ```
 
-### Extracted APIs (For Deployment Elsewhere)
+### Supporting Directories
 
 ```
-extracted-apis/
-├── odds-api/                  # DarkHorses Odds API
-│   ├── main.py               # FastAPI app
-│   ├── static/index.html     # Dashboard UI
-│   ├── requirements.txt
-│   ├── render.yaml
-│   └── README.md
+├── sql/                       # Database schemas
+│   ├── create_ra_odds_live.sql
+│   └── create_ra_odds_historical.sql
 │
-└── masters-api/               # Racing Masters Reference Data API
-    ├── main.py               # FastAPI app (from Racing-API-Masters)
-    ├── requirements.txt
-    ├── render.yaml
-    └── README.md
+└── _deprecated/               # Old/archived code
+    ├── workers/               # Old consolidated workers
+    ├── _legacy_monolithic/    # Original monolithic app
+    └── extracted-apis/        # APIs (now in separate repo)
 ```
+
+**Note**: The API code has been moved to **DarkHorses-Backend-API** repository.
 
 ## 📊 Services Overview
 
@@ -215,11 +212,15 @@ Odds API (separate deployment) → Reads from Supabase
 Masters API (separate deployment) → Reads from Supabase
 ```
 
-## 📂 Legacy Code
+## 📂 Deprecated Code
 
-Old consolidated code is archived in `_legacy_monolithic/` and `workers/` directories.
+Old code has been moved to `_deprecated/` directory:
+- `workers/` - Old consolidated workers system
+- `_legacy_monolithic/` - Original monolithic application
+- `extracted-apis/` - APIs now in DarkHorses-Backend-API repo
+- Old configuration files (render.yaml, requirements.txt, etc.)
 
-These are kept for reference but not used in production.
+See `_deprecated/README.md` for details. This code is kept for reference only.
 
 ## 🔍 Monitoring
 
