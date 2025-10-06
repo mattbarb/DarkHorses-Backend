@@ -28,6 +28,11 @@ logging.basicConfig(
     ]
 )
 
+# Reduce noise from third-party libraries
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 # Global flag for graceful shutdown

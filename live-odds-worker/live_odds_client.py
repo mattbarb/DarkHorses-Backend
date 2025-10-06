@@ -102,20 +102,11 @@ class LiveOddsSupabaseClient:
 
         # Process each bookmaker's odds
         for bookmaker_id, records in bookmaker_groups.items():
-            logger.info(f"📤 Processing {len(records)} records for bookmaker: {bookmaker_id}")
+            logger.debug(f"Processing {len(records)} records for bookmaker: {bookmaker_id}")
             self._process_bookmaker_batch(bookmaker_id, records)
 
-        # Log statistics
-        logger.info(f"")
-        logger.info(f"=" * 80)
-        logger.info(f"✅ LIVE ODDS UPDATE COMPLETED")
-        logger.info(f"   Records inserted: {self.stats['inserted']}")
-        logger.info(f"   Records updated: {self.stats['updated']}")
-        logger.info(f"   Errors: {self.stats['errors']}")
-        logger.info(f"   Unique bookmakers: {len(self.stats['bookmakers'])}")
-        logger.info(f"   Unique races: {len(self.stats['races'])}")
-        logger.info(f"   Unique horses: {len(self.stats['horses'])}")
-        logger.info(f"=" * 80)
+        # Log compact summary
+        logger.info(f"✅ Cycle complete: {self.stats['updated']} records | {len(self.stats['races'])} races | {len(self.stats['horses'])} horses | {len(self.stats['bookmakers'])} bookmakers | {self.stats['errors']} errors")
 
         # Return stats with counts
         return {
@@ -248,35 +239,23 @@ class LiveOddsSupabaseClient:
     def _upsert_batch(self, records: List[Dict]):
         """Upsert a batch of records to ra_odds_live"""
         try:
-            logger.info(f"💾 Upserting {len(records)} records to ra_odds_live...")
-
-            # Log first record for debugging
-            if records:
+            # Log sample for first batch only (debugging)
+            if self.stats['updated'] == 0 and records:
                 sample = records[0]
-                logger.info(f"   Sample record:")
-                logger.info(f"     Horse: {sample.get('horse_name', 'unknown')}")
-                logger.info(f"     Course: {sample.get('course', 'unknown')}")
-                logger.info(f"     Race ID: {sample.get('race_id', 'unknown')}")
-                logger.info(f"     Horse ID: {sample.get('horse_id', 'unknown')}")
-                logger.info(f"     Bookmaker: {sample.get('bookmaker_name', 'unknown')} ({sample.get('bookmaker_id', 'unknown')})")
-                logger.info(f"     Odds: {sample.get('odds_decimal', 'N/A')}")
+                logger.info(f"💾 First batch sample: {sample.get('horse_name')} @ {sample.get('course')} - {sample.get('bookmaker_name')} - {sample.get('odds_decimal')}")
 
             # Try upsert with conflict resolution
-            logger.info(f"   Sending upsert request to Supabase...")
             response = self.client.table('ra_odds_live').upsert(
                 records,
                 on_conflict='race_id,horse_id,bookmaker_id'
             ).execute()
 
-            logger.info(f"   Response received from Supabase")
-            logger.info(f"   Response.data type: {type(response.data)}")
-            logger.info(f"   Response.data length: {len(response.data) if response.data else 0}")
-
             if response.data:
                 count = len(response.data)
                 self.stats['updated'] += count
-                logger.info(f"✅ Successfully upserted {count} live odds records")
-                logger.info(f"   Total in this session: {self.stats['updated']} records")
+                # Only log every 500 records to reduce noise
+                if self.stats['updated'] % 500 < count:
+                    logger.info(f"✅ Upserted {self.stats['updated']} records so far...")
             else:
                 logger.warning(f"⚠️  Upsert returned no data for {len(records)} records")
                 logger.warning(f"   This could mean:")
