@@ -1,18 +1,42 @@
-# DarkHorses Odds API - Consolidated ONE Service Architecture
-# Runs API + All Schedulers in ONE process for $7/month (not $21/month)
+# DarkHorses Backend - Microservices Architecture
+# Separate workers (data collection) and API (read-only) services
 
 services:
+  # Background Workers - Data Collection Service
   - type: web
-    name: darkhorses-odds-api
+    name: darkhorses-workers
     env: python
-    plan: starter  # Requires always-on for background scheduler
+    plan: starter  # Requires always-on for continuous data collection
+    rootDir: workers
     buildCommand: pip install -r requirements.txt
-    startCommand: python3 start.py
+    startCommand: python3 start_workers.py
     envVars:
       - key: RACING_API_USERNAME
         sync: false
       - key: RACING_API_PASSWORD
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PYTHONUNBUFFERED
+        value: 1
+      - key: PYTHONDONTWRITEBYTECODE
+        value: 1
+
+  # API Service - Read-Only Data Access
+  - type: web
+    name: darkhorses-api
+    env: python
+    plan: starter
+    rootDir: api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_KEY

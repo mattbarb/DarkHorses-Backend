@@ -1,0 +1,36 @@
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# State files (keep directory structure)
+state/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test data
+test_*.json
+*_sample.json
