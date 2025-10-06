@@ -1,9 +1,22 @@
 # Core Dependencies
 python-dotenv==1.0.0
-supabase==2.0.3
+supabase>=2.4.1
 psycopg2-binary==2.9.9
 pydantic==2.9.2
 schedule==1.2.0
+
+# HTTP client (for Racing API)
+requests>=2.31.0
+
+# Date/time handling
+pytz>=2024.1
+python-dateutil>=2.8.2
+
+# System monitoring
+psutil>=5.9.0
+
+# Web server (for monitoring endpoints)
+Flask>=3.0.0
 
 # Data processing (for statistics)
 pandas==2.2.3
