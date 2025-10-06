@@ -15,8 +15,8 @@ from typing import List, Tuple
 import argparse
 from dotenv import load_dotenv
 
-from .historical_odds_fetcher import HistoricalOddsFetcher
-from .historical_odds_client import HistoricalOddsClient
+from historical_odds_fetcher import HistoricalOddsFetcher
+from historical_odds_client import HistoricalOddsClient
 
 # Setup logging
 logging.basicConfig(

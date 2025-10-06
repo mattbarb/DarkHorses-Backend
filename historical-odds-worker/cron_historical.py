@@ -21,10 +21,10 @@ import pytz
 from typing import Optional, Dict
 from pathlib import Path
 
-from .historical_odds_fetcher import HistoricalOddsFetcher
-from .historical_odds_client import HistoricalOddsClient
-from .backfill_historical import HistoricalBackfill
-from .schema_mapping import SchemaMapper
+from historical_odds_fetcher import HistoricalOddsFetcher
+from historical_odds_client import HistoricalOddsClient
+from backfill_historical import HistoricalBackfill
+from schema_mapping import SchemaMapper
 
 # Import statistics updater
 try:

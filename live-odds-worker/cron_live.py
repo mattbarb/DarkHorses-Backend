@@ -18,8 +18,8 @@ import pytz
 from dateutil import parser as date_parser
 from zoneinfo import ZoneInfo
 
-from .live_odds_fetcher import LiveOddsFetcher
-from .live_odds_client import LiveOddsSupabaseClient
+from live_odds_fetcher import LiveOddsFetcher
+from live_odds_client import LiveOddsSupabaseClient
 
 # Setup logging first (before using logger)
 logging.basicConfig(
