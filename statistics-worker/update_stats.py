@@ -18,6 +18,7 @@ sys.path.insert(0, str(stats_dir))
 
 from config import Config
 from database import DatabaseConnection
+from supabase_database import SupabaseDatabase
 from collectors import HistoricalOddsCollector, LiveOddsCollector
 from formatters import JSONFormatter
 
@@ -36,8 +37,19 @@ def update_statistics(table: str = 'live', save_to_file: bool = True) -> dict:
         Dictionary containing collected statistics
     """
     try:
-        # Initialize database connection
-        db = DatabaseConnection(Config.DATABASE_URL)
+        # Initialize database connection (prefer Supabase SDK over direct PostgreSQL)
+        supabase_url = os.getenv('SUPABASE_URL')
+        supabase_key = os.getenv('SUPABASE_SERVICE_KEY')
+
+        if supabase_url and supabase_key:
+            logger.info("📍 Using Supabase SDK (works from any network)")
+            db = SupabaseDatabase(supabase_url, supabase_key)
+        elif Config.DATABASE_URL:
+            logger.info("📍 Using direct PostgreSQL connection")
+            db = DatabaseConnection(Config.DATABASE_URL)
+        else:
+            logger.error("❌ Neither SUPABASE_URL nor DATABASE_URL configured")
+            return {}
 
         # Collect statistics
         stats = {
@@ -97,23 +109,33 @@ def update_all_statistics(save_to_file: bool = True) -> dict:
     """
     try:
         logger.info("📍 Starting statistics collection...")
-        logger.info(f"📍 DATABASE_URL configured: {bool(Config.DATABASE_URL)}")
 
-        if not Config.DATABASE_URL:
-            logger.error("❌ DATABASE_URL not set - cannot collect statistics")
+        # Prefer Supabase SDK (works from any network)
+        supabase_url = os.getenv('SUPABASE_URL')
+        supabase_key = os.getenv('SUPABASE_SERVICE_KEY')
+
+        if supabase_url and supabase_key:
+            logger.info("📍 Using Supabase SDK (works from any network)")
+            db = SupabaseDatabase(supabase_url, supabase_key)
+        elif Config.DATABASE_URL:
+            logger.info("📍 Using direct PostgreSQL connection")
+            logger.info(f"📍 DATABASE_URL configured: {bool(Config.DATABASE_URL)}")
+
+            # Check if using direct db.*.supabase.co URL (won't work on Render due to IPv6-only)
+            if 'db.' in Config.DATABASE_URL and '.supabase.co' in Config.DATABASE_URL:
+                logger.error("❌ DATABASE_URL uses direct database connection (db.*.supabase.co)")
+                logger.error("⚠️  Render doesn't support IPv6, and Supabase db hosts are IPv6-only")
+                logger.error("✅ SOLUTION: Use Supabase connection pooler URL instead:")
+                logger.error("   Change DATABASE_URL to use: pooler.supabase.com (has IPv4 support)")
+                logger.error("   Example: postgresql://...@aws-0-us-west-1.pooler.supabase.com:5432/...")
+                logger.error("   OR BETTER: Use SUPABASE_URL and SUPABASE_SERVICE_KEY instead")
+                return {}
+
+            db = DatabaseConnection(Config.DATABASE_URL)
+        else:
+            logger.error("❌ Neither SUPABASE_URL/SUPABASE_SERVICE_KEY nor DATABASE_URL configured")
             return {}
 
-        # Check if using direct db.*.supabase.co URL (won't work on Render due to IPv6-only)
-        if 'db.' in Config.DATABASE_URL and '.supabase.co' in Config.DATABASE_URL:
-            logger.error("❌ DATABASE_URL uses direct database connection (db.*.supabase.co)")
-            logger.error("⚠️  Render doesn't support IPv6, and Supabase db hosts are IPv6-only")
-            logger.error("✅ SOLUTION: Use Supabase connection pooler URL instead:")
-            logger.error("   Change DATABASE_URL to use: pooler.supabase.com (has IPv4 support)")
-            logger.error("   Example: postgresql://...@aws-0-us-west-1.pooler.supabase.com:5432/...")
-            return {}
-
-        logger.info("📍 Connecting to database...")
-        db = DatabaseConnection(Config.DATABASE_URL)
         logger.info("✅ Database connection established")
 
         stats = {

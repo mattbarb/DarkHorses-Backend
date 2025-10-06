@@ -34,10 +34,12 @@ python3 test_statistics_worker.py
 ## Requirements
 
 ```bash
-pip install supabase colorama psycopg2-binary python-dotenv
+pip install supabase colorama python-dotenv
 ```
 
 **Note**: These dependencies are already in the root `requirements.txt`.
+
+**Important**: `psycopg2-binary` is NO LONGER required. All tests now use Supabase SDK which works from any network.
 
 ## Environment Variables
 
@@ -46,8 +48,9 @@ Tests require the following environment variables (from `.env.local` or `.env`):
 ```bash
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your_service_key
-DATABASE_URL=postgresql://postgres:password@db.supabase.co:5432/postgres
 ```
+
+**Note**: `DATABASE_URL` is NO LONGER required. The statistics worker has been refactored to use Supabase SDK, eliminating the IPv6 connection issues that prevented local testing.
 
 ## Test Details
 
@@ -122,17 +125,19 @@ TEST SUMMARY - LIVE ODDS WORKER
 **File**: `test_statistics_worker.py`
 
 **Tests**:
-1. ✅ Database connection for queries
+1. ✅ Supabase connection for queries
 2. ✅ Statistics queries execute successfully
 3. ✅ Output JSON files exist and are recent
 4. ✅ Aggregation accuracy
 5. ✅ Update frequency (every 10 minutes)
 
 **Validates**:
-- Direct PostgreSQL connection
+- Supabase SDK connection (works from any network)
 - COUNT DISTINCT aggregations
 - JSON file freshness
 - Data consistency
+
+**Note**: Previously used direct PostgreSQL connection (DATABASE_URL) which failed locally due to IPv6-only access. Now uses Supabase SDK for universal compatibility.
 
 ## Interpreting Results
 
@@ -160,8 +165,8 @@ TEST SUMMARY - LIVE ODDS WORKER
 ### Common Failures
 
 **All Workers**:
-- ❌ Missing environment variables - Check `.env.local` exists
-- ❌ Database connection failed - Check DATABASE_URL is correct
+- ❌ Missing environment variables - Check `.env.local` exists with SUPABASE_URL and SUPABASE_SERVICE_KEY
+- ❌ Supabase connection failed - Check credentials are correct and service key is used (not anon key)
 
 **Live Odds**:
 - ❌ No recent updates - Worker may have crashed or not running
@@ -169,6 +174,9 @@ TEST SUMMARY - LIVE ODDS WORKER
 
 **Historical Odds**:
 - ❌ Table empty - Backfill hasn't started (runs immediately on first deploy)
+
+**Statistics** (Legacy issues - now resolved):
+- ~~❌ DATABASE_URL connection failed~~ - No longer applicable, now uses Supabase SDK
 
 ## CI/CD Integration
 
@@ -196,17 +204,21 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 ```
 
 ## Troubleshooting
 
-### Tests Can't Connect to Database
+### Tests Can't Connect to Supabase
 
 ```bash
 # Verify environment variables are loaded
-python3 -c "import os; from dotenv import load_dotenv; load_dotenv('.env.local'); print(os.getenv('SUPABASE_URL'))"
+python3 -c "import os; from dotenv import load_dotenv; load_dotenv('.env.local'); print('SUPABASE_URL:', os.getenv('SUPABASE_URL')); print('SUPABASE_SERVICE_KEY:', bool(os.getenv('SUPABASE_SERVICE_KEY')))"
 ```
+
+**Common issues**:
+- Missing `.env.local` file - Copy from `.env.example` and fill in credentials
+- Wrong Supabase service key - Must use service role key (not anon key)
+- Network firewall blocking Supabase - Check if you can access Supabase dashboard
 
 ### Tests Show Stale Data
 

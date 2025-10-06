@@ -176,22 +176,41 @@ The parser extracts 26 bookmakers per horse from the embedded `odds` array in ea
 
 ### Statistics Tracker Database Connection
 
-**Important architectural decision**:
+**Architecture Update** (October 2025):
 
-- **Main pipeline** (live_odds, historical_odds): Uses Supabase client SDK
-- **Statistics tracker**: Uses direct PostgreSQL connection via `psycopg2`
+- **ALL workers** now use Supabase client SDK exclusively
+- Statistics tracker refactored from direct PostgreSQL to Supabase SDK
 
-**Reason**: Supabase client doesn't support complex aggregation queries (COUNT DISTINCT, GROUP BY with aggregations, etc.) needed for statistics. Direct PostgreSQL is read-only for analytics.
+**Why the change**:
+- Direct PostgreSQL connection (`db.*.supabase.co`) is IPv6-only and doesn't work from many networks
+- Prevented local testing of statistics worker
+- Supabase SDK works from anywhere and simplifies configuration
+
+**Implementation**:
+- Complex aggregation queries (COUNT DISTINCT, GROUP BY, etc.) are now handled by:
+  1. Fetching filtered data via Supabase SDK
+  2. Aggregating in Python using native data structures
+  3. Fallback to direct PostgreSQL if DATABASE_URL is set (legacy support)
 
 **Configuration**:
 ```python
-# Main pipeline - Supabase SDK
+# All workers - Supabase SDK only
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your_key
 
-# Statistics tracker - Direct PostgreSQL (read-only)
-DATABASE_URL=postgresql://postgres:password@db.supabase.co:5432/postgres
+# DATABASE_URL no longer required (legacy support only)
 ```
+
+**Benefits**:
+- ✅ Works from any network (local development + Render.com)
+- ✅ Eliminates IPv6 connection issues
+- ✅ Simpler configuration (2 env vars instead of 3)
+- ✅ All tests can run locally without DATABASE_URL
+
+**Files**:
+- `statistics-worker/supabase_database.py` - New Supabase SDK adapter
+- `statistics-worker/database.py` - Legacy PostgreSQL connection (still available)
+- `statistics-worker/update_stats.py` - Auto-detects and uses Supabase SDK first
 
 ### Scheduler Timing
 

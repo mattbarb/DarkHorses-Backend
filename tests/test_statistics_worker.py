@@ -7,11 +7,11 @@ Verifies that statistics are being generated and updated
 import os
 import sys
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pathlib import Path
 from dotenv import load_dotenv
 from colorama import Fore, Style, init
-import psycopg2
+from supabase import create_client, Client
 
 # Load environment
 env_file = Path(__file__).parent.parent / '.env.local'
@@ -27,10 +27,15 @@ class StatisticsWorkerTest:
     """Test suite for Statistics Worker"""
 
     def __init__(self):
-        self.database_url = os.getenv('DATABASE_URL')
+        # Prefer Supabase SDK (works from any network)
+        self.supabase_url = os.getenv('SUPABASE_URL')
+        self.supabase_key = os.getenv('SUPABASE_SERVICE_KEY')
 
-        if not self.database_url:
-            raise ValueError("Missing DATABASE_URL in environment")
+        if not self.supabase_url or not self.supabase_key:
+            raise ValueError("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in environment")
+
+        # Initialize Supabase client
+        self.client: Client = create_client(self.supabase_url, self.supabase_key)
 
         self.results = {
             'passed': 0,
@@ -54,25 +59,19 @@ class StatisticsWorkerTest:
 
     def test_database_connection(self):
         """Test 1: Verify can connect to database for statistics queries"""
-        print(f"{Fore.YELLOW}[TEST 1]{Style.RESET_ALL} Checking database connection...")
+        print(f"{Fore.YELLOW}[TEST 1]{Style.RESET_ALL} Checking Supabase connection...")
 
         try:
-            conn = psycopg2.connect(self.database_url)
-            cursor = conn.cursor()
-
             # Simple query to test connection
-            cursor.execute("SELECT COUNT(*) FROM ra_odds_live")
-            count = cursor.fetchone()[0]
+            response = self.client.table('ra_odds_live').select('*', count='exact').limit(1).execute()
+            count = response.count
 
-            cursor.close()
-            conn.close()
-
-            print(f"{Fore.GREEN}✅ PASS{Style.RESET_ALL} - Database connection successful")
+            print(f"{Fore.GREEN}✅ PASS{Style.RESET_ALL} - Supabase connection successful")
             print(f"  📊 ra_odds_live has {count:,} records")
             self.results['passed'] += 1
             return True
         except Exception as e:
-            print(f"{Fore.RED}❌ FAIL{Style.RESET_ALL} - Database connection failed: {e}")
+            print(f"{Fore.RED}❌ FAIL{Style.RESET_ALL} - Supabase connection failed: {e}")
             self.results['failed'] += 1
             return False
 
@@ -81,25 +80,20 @@ class StatisticsWorkerTest:
         print(f"\n{Fore.YELLOW}[TEST 2]{Style.RESET_ALL} Running statistics queries...")
 
         try:
-            conn = psycopg2.connect(self.database_url)
-            cursor = conn.cursor()
+            today = date.today().isoformat()
 
-            # Test key statistics queries
-            queries = {
-                'unique_races': "SELECT COUNT(DISTINCT race_id) FROM ra_odds_live WHERE race_date >= CURRENT_DATE",
-                'unique_bookmakers': "SELECT COUNT(DISTINCT bookmaker_id) FROM ra_odds_live",
-                'unique_horses': "SELECT COUNT(DISTINCT horse_id) FROM ra_odds_live WHERE race_date >= CURRENT_DATE",
-                'total_records_today': "SELECT COUNT(*) FROM ra_odds_live WHERE race_date >= CURRENT_DATE"
+            # Fetch all records for today to compute statistics
+            response_today = self.client.table('ra_odds_live')\
+                .select('race_id,bookmaker_id,horse_id')\
+                .gte('race_date', today)\
+                .execute()
+
+            stats = {
+                'unique_races': len(set(row['race_id'] for row in response_today.data if row.get('race_id'))),
+                'unique_bookmakers': len(set(row['bookmaker_id'] for row in response_today.data if row.get('bookmaker_id'))),
+                'unique_horses': len(set(row['horse_id'] for row in response_today.data if row.get('horse_id'))),
+                'total_records_today': len(response_today.data)
             }
-
-            stats = {}
-            for name, query in queries.items():
-                cursor.execute(query)
-                result = cursor.fetchone()[0]
-                stats[name] = result
-
-            cursor.close()
-            conn.close()
 
             print(f"{Fore.GREEN}✅ PASS{Style.RESET_ALL} - Statistics queries executed successfully:")
             print(f"  🏁 Unique races today: {stats['unique_races']:,}")
@@ -177,26 +171,19 @@ class StatisticsWorkerTest:
         print(f"\n{Fore.YELLOW}[TEST 4]{Style.RESET_ALL} Checking aggregation accuracy...")
 
         try:
-            conn = psycopg2.connect(self.database_url)
-            cursor = conn.cursor()
+            today = date.today().isoformat()
 
             # Get sample aggregation data
-            cursor.execute("""
-                SELECT
-                    COUNT(*) as total_records,
-                    COUNT(DISTINCT race_id) as unique_races,
-                    COUNT(DISTINCT horse_id) as unique_horses,
-                    COUNT(DISTINCT bookmaker_id) as unique_bookmakers
-                FROM ra_odds_live
-                WHERE race_date >= CURRENT_DATE
-            """)
+            response = self.client.table('ra_odds_live')\
+                .select('race_id,horse_id,bookmaker_id')\
+                .gte('race_date', today)\
+                .execute()
 
-            result = cursor.fetchone()
-            cursor.close()
-            conn.close()
-
-            if result:
-                total, races, horses, bookmakers = result
+            if response.data:
+                total = len(response.data)
+                races = len(set(row['race_id'] for row in response.data if row.get('race_id')))
+                horses = len(set(row['horse_id'] for row in response.data if row.get('horse_id')))
+                bookmakers = len(set(row['bookmaker_id'] for row in response.data if row.get('bookmaker_id')))
 
                 # Sanity checks
                 valid = True
