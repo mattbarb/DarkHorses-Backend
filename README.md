@@ -1,18 +1,33 @@
 # DarkHorses Racing Odds Backend
 
-Two microservices for collecting horse racing odds data from The Racing API.
+Microservices architecture for collecting horse racing odds data from The Racing API.
 
-## Services
+## 🏗️ Architecture
 
-### 1. **Historical Odds Service** (`historical_odds/`)
-- Backfills historical data from 2015 to present
-- Runs daily at 1 AM UK time to fetch completed races
-- Stores in `ra_odds_historical` table
+This system uses a **microservices architecture** with two separate services:
 
-### 2. **Live Odds Service** (`live_odds/`)
-- Real-time odds collection with smart scheduling
-- Adjusts frequency based on race proximity (10s - 15min intervals)
-- Stores in `ra_odds_live` table
+### 1. **Workers Service** (`workers/`)
+Background data collection service (no HTTP server):
+- **Live Odds Scheduler**: Adaptive intervals (10s-15min based on race proximity)
+- **Historical Odds Scheduler**: Daily at 1:00 AM UK time for completed races
+- **Statistics Updater**: Every 10 minutes
+
+**Writes to**: `ra_odds_live`, `ra_odds_historical`, `ra_odds_statistics` tables
+
+### 2. **API Service** (`api/`)
+Read-only HTTP API and dashboard UI:
+- FastAPI server with Swagger docs
+- Kanban-style race cards dashboard
+- Query endpoints for live and historical odds
+- Statistics viewer
+
+**Reads from**: All database tables
+
+---
+
+📖 **For detailed architecture documentation, see [MICROSERVICES_ARCHITECTURE.md](MICROSERVICES_ARCHITECTURE.md)**
+
+---
 
 ## Quick Start - Render.com Deployment
 

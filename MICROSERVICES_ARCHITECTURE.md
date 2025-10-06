@@ -52,10 +52,12 @@ DarkHorses-Backend/
 │   ├── requirements.txt          # API dependencies
 │   └── logs/
 │
-├── odds_api/                     # OLD monolithic service (deprecated)
-│   └── ... (keep for reference, not deployed)
+├── _legacy_monolithic/           # OLD monolithic service (archived)
+│   ├── README_LEGACY.md          # Rollback instructions
+│   └── ... (kept for reference, not deployed)
 │
 ├── render.yaml                   # Render.com deployment config
+├── MICROSERVICES_ARCHITECTURE.md # This file
 └── sql/                          # Database schemas
 ```
 
@@ -300,11 +302,14 @@ Then visit:
 
 If issues arise, can quickly rollback to monolithic:
 
-1. Suspend new microservices on Render
-2. Resume old `darkhorses-odds-api` service
-3. Point to `odds_api/` directory with `start.py` entry point
+1. Rename `_legacy_monolithic/` back to `odds_api/`
+2. Update `render.yaml` to use `odds_api/` with `start.py` entry point
+3. Push changes and deploy
+4. Suspend new microservices on Render
 
-The old monolithic code is preserved in `odds_api/` directory.
+The old monolithic code is preserved in `_legacy_monolithic/` directory.
+
+See `_legacy_monolithic/README_LEGACY.md` for detailed rollback instructions.
 
 ## Future Enhancements
 
