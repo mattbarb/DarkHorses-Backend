@@ -74,29 +74,29 @@ class HistoricalOddsWorkerTest:
         print(f"\n{Fore.YELLOW}[TEST 2]{Style.RESET_ALL} Checking date coverage...")
 
         try:
-            # Get earliest and latest dates
+            # Get earliest and latest dates (column is 'date_of_race')
             response = self.client.table('ra_odds_historical')\
-                .select('race_date')\
-                .order('race_date', desc=False)\
+                .select('date_of_race')\
+                .order('date_of_race', desc=False)\
                 .limit(1)\
                 .execute()
 
             earliest_response = self.client.table('ra_odds_historical')\
-                .select('race_date')\
-                .order('race_date', desc=True)\
+                .select('date_of_race')\
+                .order('date_of_race', desc=True)\
                 .limit(1)\
                 .execute()
 
             if response.data and earliest_response.data:
-                earliest = response.data[0]['race_date']
-                latest = earliest_response.data[0]['race_date']
+                earliest = response.data[0]['date_of_race']
+                latest = earliest_response.data[0]['date_of_race']
 
                 # Count unique dates
                 dates_response = self.client.table('ra_odds_historical')\
-                    .select('race_date')\
+                    .select('date_of_race')\
                     .execute()
 
-                unique_dates = len(set(r['race_date'] for r in dates_response.data if r.get('race_date')))
+                unique_dates = len(set(r['date_of_race'] for r in dates_response.data if r.get('date_of_race')))
 
                 print(f"{Fore.GREEN}✅ PASS{Style.RESET_ALL} - Historical data coverage:")
                 print(f"  📅 Earliest date: {earliest}")
@@ -131,7 +131,7 @@ class HistoricalOddsWorkerTest:
 
             response = self.client.table('ra_odds_historical')\
                 .select('*', count='exact')\
-                .gte('race_date', week_ago)\
+                .gte('date_of_race', week_ago)\
                 .limit(1)\
                 .execute()
 
@@ -154,9 +154,9 @@ class HistoricalOddsWorkerTest:
         print(f"\n{Fore.YELLOW}[TEST 4]{Style.RESET_ALL} Checking race results data...")
 
         try:
-            # Get sample of recent data
+            # Get sample of recent data (no race_id/horse_id in this schema)
             response = self.client.table('ra_odds_historical')\
-                .select('race_id,horse_id,horse_name,finishing_position')\
+                .select('horse_name,finishing_position,track,date_of_race')\
                 .limit(100)\
                 .execute()
 
@@ -196,34 +196,28 @@ class HistoricalOddsWorkerTest:
 
         try:
             response = self.client.table('ra_odds_historical')\
-                .select('race_id,horse_id,bookmaker_id,odds_decimal,race_date')\
+                .select('horse_name,track,date_of_race,finishing_position')\
                 .limit(100)\
                 .execute()
 
             if response.data:
                 total = len(response.data)
-                missing_race_id = sum(1 for r in response.data if not r.get('race_id'))
-                missing_horse_id = sum(1 for r in response.data if not r.get('horse_id'))
-                missing_bookmaker = sum(1 for r in response.data if not r.get('bookmaker_id'))
-                missing_date = sum(1 for r in response.data if not r.get('race_date'))
+                missing_horse = sum(1 for r in response.data if not r.get('horse_name'))
+                missing_track = sum(1 for r in response.data if not r.get('track'))
+                missing_date = sum(1 for r in response.data if not r.get('date_of_race'))
 
-                if missing_race_id == 0 and missing_horse_id == 0 and missing_date == 0:
+                if missing_horse == 0 and missing_track == 0 and missing_date == 0:
                     print(f"{Fore.GREEN}✅ PASS{Style.RESET_ALL} - All critical fields populated in {total} sample records")
                     self.results['passed'] += 1
-
-                    if missing_bookmaker > 0:
-                        print(f"{Fore.YELLOW}  ⚠️  {missing_bookmaker} records missing bookmaker_id{Style.RESET_ALL}")
-                        self.results['warnings'] += 1
-
                     return True
                 else:
                     print(f"{Fore.RED}❌ FAIL{Style.RESET_ALL} - Found NULL values in critical fields:")
-                    if missing_race_id > 0:
-                        print(f"  Missing race_id: {missing_race_id}/{total}")
-                    if missing_horse_id > 0:
-                        print(f"  Missing horse_id: {missing_horse_id}/{total}")
+                    if missing_horse > 0:
+                        print(f"  Missing horse_name: {missing_horse}/{total}")
+                    if missing_track > 0:
+                        print(f"  Missing track: {missing_track}/{total}")
                     if missing_date > 0:
-                        print(f"  Missing race_date: {missing_date}/{total}")
+                        print(f"  Missing date_of_race: {missing_date}/{total}")
 
                     self.results['failed'] += 1
                     return False
@@ -243,13 +237,15 @@ class HistoricalOddsWorkerTest:
         try:
             # Get earliest date
             response = self.client.table('ra_odds_historical')\
-                .select('race_date')\
-                .order('race_date', desc=False)\
+                .select('date_of_race')\
+                .order('date_of_race', desc=False)\
                 .limit(1)\
                 .execute()
 
             if response.data:
-                earliest = response.data[0]['race_date']
+                earliest_raw = response.data[0]['date_of_race']
+                # Handle datetime format (extract date part)
+                earliest = earliest_raw.split('T')[0] if 'T' in str(earliest_raw) else str(earliest_raw)
                 target = "2015-01-01"
 
                 print(f"  📅 Current earliest date: {earliest}")
