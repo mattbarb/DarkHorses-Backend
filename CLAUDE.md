@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**DarkHorses-Backend-Workers** is the **workers-only** data collection service for horse racing odds. It fetches data from The Racing API and stores it in Supabase. The API/frontend is managed in a separate repository and reads from the same database.
+**DarkHorses-Backend-Workers** is the **workers-only** data collection service for horse racing. It fetches both odds data and reference/master data from The Racing API and stores everything in Supabase. The API/frontend is managed in a separate repository and reads from the same database.
 
 ## System Architecture
 
@@ -12,51 +12,89 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **IMPORTANT**: This repository contains ONLY the background workers - NO API.
 
-All components are organized under the `workers/` directory:
+The system consists of **TWO separate Render.com deployments**:
+
+1. **Odds Workers Service** (`darkhorses-workers`) - Real-time and historical odds
+2. **Masters Worker Service** (`darkhorses-masters-worker`) - Reference data (courses, jockeys, etc.)
+
+All components are organized in dedicated directories:
 
 ```
-workers/
-├── start_workers.py      # Main entry - runs all schedulers
-├── scheduler.py          # Consolidated scheduler for all workers
-├── requirements.txt      # Worker dependencies
-├── logs/                 # All worker logs
-├── live_odds/            # Real-time odds collection module
+DarkHorses-Backend-Workers/
+├── start_workers.py      # Odds workers entry point
+├── scheduler.py          # Consolidated scheduler for odds workers
+├── requirements.txt      # Odds workers dependencies
+├── live-odds-worker/     # Real-time odds collection
 │   ├── cron_live.py
 │   ├── live_odds_fetcher.py
 │   └── live_odds_client.py
-├── historical_odds/      # Historical backfill module
+├── historical-odds-worker/  # Historical backfill
 │   ├── cron_historical.py
 │   ├── historical_odds_fetcher.py
 │   └── historical_odds_client.py
-└── odds_statistics/      # Statistics tracking module
-    ├── update_stats.py
-    └── database.py
+├── statistics-worker/    # Statistics tracking
+│   ├── update_stats.py
+│   └── database.py
+└── masters-worker/       # Reference data (SEPARATE SERVICE)
+    ├── render_worker.py  # Masters worker entry point
+    ├── main.py           # CLI orchestrator
+    ├── fetchers/         # Entity fetchers
+    │   ├── courses_fetcher.py
+    │   ├── bookmakers_fetcher.py
+    │   ├── jockeys_fetcher.py
+    │   ├── trainers_fetcher.py
+    │   ├── owners_fetcher.py
+    │   ├── horses_fetcher.py
+    │   ├── races_fetcher.py
+    │   └── results_fetcher.py
+    └── requirements.txt  # Masters worker dependencies
 ```
 
-**Key principle**: ONE Render.com web service runs all data collection:
+**Architecture Principle**: TWO separate Render.com services for logical separation:
+
+**Service 1: darkhorses-workers** ($7/month)
 - Live odds collection (adaptive: 10s-15min based on race proximity)
 - Historical backfill (daily 1 AM)
 - Statistics updates (every 10 min)
-- NO HTTP server, NO API endpoints
 
-**Cost**: $7/month for ONE workers service on Render.com Starter plan.
+**Service 2: darkhorses-masters-worker** ($7/month)
+- Reference data: courses, bookmakers, jockeys, trainers, owners, horses
+- Race cards and results
+- Scheduled updates: daily/weekly/monthly
+
+**Total Cost**: $14/month (2 × Render.com Starter plan)
 
 ### Database Architecture
 
-**Two main tables in Supabase PostgreSQL:**
+**Supabase PostgreSQL Tables** (two categories):
+
+#### Odds Tables (Odds Workers Service)
 
 1. **`ra_odds_live`** (31 columns) - Current/upcoming race odds
    - Fixed odds only (no exchange data)
-   - Updated every 5 minutes (adaptive: 1 min when race imminent)
+   - Updated adaptively (10s-15min based on race proximity)
    - Stops updating when race starts
    - Unique constraint: `(race_id, horse_id, bookmaker_id)`
 
 2. **`ra_odds_historical`** - Historical race results and final odds
-   - Backfilled from 2015 to present
+   - Backfilled from 2015 to present (2.4M+ records)
    - Daily updates at 1:00 AM UK time
    - Includes finishing positions and race results
 
-**Critical Note**: The Racing API only provides **fixed odds** from traditional bookmakers. Exchange columns (back/lay prices, etc.) were removed as they're never populated.
+#### Reference/Master Tables (Masters Worker Service)
+
+3. **`racing_courses`** - Racing venues (UK & Ireland only)
+4. **`racing_bookmakers`** - Bookmakers list
+5. **`racing_jockeys`** - Jockey profiles
+6. **`racing_trainers`** - Trainer profiles
+7. **`racing_owners`** - Owner profiles
+8. **`racing_horses`** - Horse profiles
+9. **`racing_races`** - Race cards with runners
+10. **`racing_results`** - Historical race results
+
+**Critical Notes**:
+- The Racing API only provides **fixed odds** from traditional bookmakers. Exchange columns were removed.
+- All reference data is **filtered for UK/Ireland only** automatically.
 
 ### Data Flow
 
@@ -178,41 +216,176 @@ schedule.every(10).minutes.do(self.run_statistics_update)
 
 Also triggered automatically after successful fetch cycles in both live and historical schedulers.
 
+## Masters Worker (Reference Data)
+
+The `masters-worker` is a **separate background service** that fetches and maintains racing reference/master data.
+
+### What It Fetches
+
+**Reference Entities** (UK & Ireland only):
+- **Courses** (racing venues) - Monthly updates
+- **Bookmakers** (odds providers) - Monthly updates
+- **Jockeys** (rider profiles) - Weekly updates
+- **Trainers** (trainer profiles) - Weekly updates
+- **Owners** (horse owners) - Weekly updates
+- **Horses** (horse profiles) - Weekly updates
+- **Race Cards** (upcoming races with runners) - Daily updates
+- **Race Results** (historical results) - Daily updates
+
+**Regional Filtering**: All data automatically filtered for UK (GB) and Ireland (IRE) only.
+
+### Update Schedule
+
+Runs on scheduled intervals using Python `schedule` library:
+
+```python
+# Daily (1:00 AM)
+- Race cards (upcoming races)
+- Race results (historical)
+
+# Weekly (Sunday 2:00 AM)
+- Jockeys
+- Trainers
+- Owners
+- Horses
+
+# Monthly (1st day, 3:00 AM)
+- Courses
+- Bookmakers
+```
+
+### Database Tables
+
+Stores data in separate `racing_*` tables (NOT `ra_odds_*`):
+- `racing_courses`
+- `racing_bookmakers`
+- `racing_jockeys`
+- `racing_trainers`
+- `racing_owners`
+- `racing_horses`
+- `racing_races`
+- `racing_results`
+
+### Key Files
+
+```
+masters-worker/
+├── render_worker.py          # Render.com entry point (scheduled execution)
+├── main.py                   # CLI orchestrator for manual runs
+├── requirements.txt          # Masters worker dependencies
+├── config/config.py          # Configuration management
+├── fetchers/                 # Entity-specific fetchers
+│   ├── courses_fetcher.py
+│   ├── bookmakers_fetcher.py
+│   ├── jockeys_fetcher.py
+│   ├── trainers_fetcher.py
+│   ├── owners_fetcher.py
+│   ├── horses_fetcher.py
+│   ├── races_fetcher.py
+│   └── results_fetcher.py
+├── utils/
+│   ├── api_client.py         # Racing API client
+│   ├── supabase_client.py    # Database operations
+│   ├── logger.py             # Logging utilities
+│   └── regional_filter.py    # UK/Ireland filtering
+├── health_check.py           # System health monitoring
+├── data_quality_check.py     # Data validation
+└── README_WORKER.md          # Masters worker documentation
+```
+
+### Manual Execution (Development)
+
+```bash
+cd masters-worker
+
+# Fetch all entities (complete sync)
+python main.py --all
+
+# Daily update (races and results)
+python main.py --daily
+
+# Weekly update (people and horses)
+python main.py --weekly
+
+# Monthly update (courses and bookmakers)
+python main.py --monthly
+
+# Specific entities
+python main.py --entities courses bookmakers
+python main.py --entities races results
+
+# Test mode (limited data)
+python main.py --test --entities courses
+```
+
 ## Deployment
 
-### Render.com - Workers Deployment (Production)
+### Render.com - TWO Separate Services
 
-**Architecture**: ONE Render.com web service runs all background workers.
+**Architecture**: TWO Render.com web services for logical separation.
+
+#### Service 1: Odds Workers (`darkhorses-workers`)
 
 ```bash
 # Service Configuration (from render.yaml):
 Service Name: darkhorses-workers
 Service Type: Web Service (needed for always-on)
-Root Directory: workers
-Build Command: pip install -r requirements.txt
+Build Command: pip install --upgrade pip && pip install -r requirements.txt
 Start Command: python3 start_workers.py
 
-# This ONE service runs:
+# This service runs:
 # 1. Live odds scheduler (adaptive intervals)
 # 2. Historical odds scheduler (daily 1 AM)
 # 3. Statistics updater (every 10 min)
-# NO HTTP server, NO API
 ```
 
-**Required Environment Variables:**
+**Cost**: $7/month (Render Starter plan)
+
+#### Service 2: Masters Worker (`darkhorses-masters-worker`)
+
+```bash
+# Service Configuration (from render.yaml):
+Service Name: darkhorses-masters-worker
+Service Type: Web Service (needed for always-on)
+Root Directory: masters-worker
+Build Command: pip install --upgrade pip && pip install -r requirements.txt
+Start Command: python3 render_worker.py
+
+# This service runs:
+# 1. Reference data fetchers (daily/weekly/monthly schedule)
+# 2. Race cards and results (daily)
+# 3. People and horses (weekly)
+# 4. Courses and bookmakers (monthly)
+```
+
+**Cost**: $7/month (Render Starter plan)
+
+### Total System Cost
+
+**$14/month** (2 × Render.com Starter plan)
+- Service 1: Odds Workers - $7/month
+- Service 2: Masters Worker - $7/month
+
+### Required Environment Variables (Both Services)
+
+**Same variables for both services:**
 ```
 RACING_API_USERNAME=<username>
 RACING_API_PASSWORD=<password>
 SUPABASE_URL=https://project.supabase.co
 SUPABASE_SERVICE_KEY=<service_key>
 DATABASE_URL=postgresql://postgres:pass@db.supabase.co:5432/postgres
+LOG_LEVEL=INFO
+PYTHONUNBUFFERED=1
+PYTHONDONTWRITEBYTECODE=1
 ```
 
-**Critical Deployment Requirements:**
+### Critical Deployment Requirements
+
 - **Plan**: Must use Starter ($7/month) or higher - NOT free tier
 - **Why**: Free tier spins down after 15 min, stopping schedulers
-- **Cost**: $7/month for ONE workers service
-- **Config File**: `render.yaml` in root
+- **Config File**: `render.yaml` in repository root defines BOTH services
+- **Deployment**: Pushing to GitHub auto-deploys both services
 
 **Note**: The API/frontend is deployed separately in a different repository.
 

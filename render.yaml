@@ -1,11 +1,37 @@
 services:
-  # Consolidated Workers - All data collection in one service
+  # Consolidated Workers - Live odds, historical odds, and statistics
   - type: web
     name: darkhorses-workers
     env: python
     plan: starter  # Required for always-on (not free tier)
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python3 start_workers.py
+    envVars:
+      - key: RACING_API_USERNAME
+        sync: false
+      - key: RACING_API_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PYTHONUNBUFFERED
+        value: 1
+      - key: PYTHONDONTWRITEBYTECODE
+        value: 1
+
+  # Masters Worker - Reference data (courses, bookmakers, jockeys, trainers, etc.)
+  - type: web
+    name: darkhorses-masters-worker
+    env: python
+    plan: starter  # Required for always-on scheduled tasks
+    rootDirectory: masters-worker
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python3 render_worker.py
     envVars:
       - key: RACING_API_USERNAME
         sync: false
