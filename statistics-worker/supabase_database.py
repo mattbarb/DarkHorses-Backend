@@ -136,8 +136,8 @@ class SupabaseDatabase:
         else:
             raise ValueError(f"Unsupported query: {query}")
 
-        # For GROUP BY queries, fetch all data and aggregate in Python
-        if 'group by' in query_lower:
+        # For GROUP BY or FILTER queries, fetch all data and aggregate in Python
+        if 'group by' in query_lower or 'filter' in query_lower:
             return self._execute_aggregation_query(query, table)
         else:
             raise ValueError(f"Query pattern not supported: {query[:100]}...")
