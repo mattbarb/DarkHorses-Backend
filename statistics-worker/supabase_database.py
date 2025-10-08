@@ -57,9 +57,29 @@ class SupabaseDatabase:
         else:
             raise ValueError(f"Unsupported query: {query}")
 
-        # COUNT(*) queries
+        # COUNT(*) queries with time intervals (NOW() - INTERVAL)
         if query_lower.startswith('select count(*)'):
-            response = self.client.table(table).select('*', count='exact').limit(1).execute()
+            import re
+            from datetime import datetime, timedelta
+
+            query_builder = self.client.table(table).select('*', count='exact')
+
+            # Handle WHERE created_at >= NOW() - INTERVAL 'X hour/day/days'
+            interval_match = re.search(r"created_at >= now\(\) - interval '(\d+) (hour|day|days)'", query_lower)
+            if interval_match:
+                amount = int(interval_match.group(1))
+                unit = interval_match.group(2)
+
+                if unit == 'hour':
+                    cutoff = datetime.utcnow() - timedelta(hours=amount)
+                elif unit in ['day', 'days']:
+                    cutoff = datetime.utcnow() - timedelta(days=amount)
+                else:
+                    cutoff = datetime.utcnow()
+
+                query_builder = query_builder.gte('created_at', cutoff.isoformat())
+
+            response = query_builder.limit(1).execute()
             return response.count
 
         # COUNT(DISTINCT column) queries
@@ -222,33 +242,40 @@ class SupabaseDatabase:
             result.sort(key=lambda x: x['odds_count'], reverse=True)
             return result
 
-        # Records per date query
-        elif 'group by race_date' in query_lower:
+        # Records per date query (handles both race_date and DATE(date_of_race))
+        elif 'group by race_date' in query_lower or 'group by date(date_of_race)' in query_lower:
             groups = defaultdict(lambda: {
                 'record_count': 0,
                 'races': set(),
                 'bookmakers': set()
             })
 
+            # Determine which date field to use
+            date_field = 'date_of_race' if 'date_of_race' in query_lower else 'race_date'
+
             for row in data:
-                key = row.get('race_date')
+                key = row.get(date_field)
                 if key:
                     # Convert to date string if needed
                     if isinstance(key, str):
-                        key = key.split('T')[0]
+                        key = key.split('T')[0]  # Extract date part
+                    elif hasattr(key, 'isoformat'):
+                        key = key.isoformat().split('T')[0]
 
                     groups[key]['race_date'] = key
                     groups[key]['record_count'] += 1
-                    groups[key]['races'].add(row.get('race_id'))
-                    groups[key]['bookmakers'].add(row.get('bookmaker_id'))
+                    if row.get('race_id'):
+                        groups[key]['races'].add(row.get('race_id'))
+                    if row.get('bookmaker_id'):
+                        groups[key]['bookmakers'].add(row.get('bookmaker_id'))
 
             result = []
             for group in groups.values():
                 result.append({
                     'race_date': group['race_date'],
                     'record_count': group['record_count'],
-                    'unique_races': len(group['races']),
-                    'unique_bookmakers': len(group['bookmakers'])
+                    'unique_races': len(group['races']) if group['races'] else 0,
+                    'unique_bookmakers': len(group['bookmakers']) if group['bookmakers'] else 0
                 })
 
             # Sort by race_date DESC
@@ -292,6 +319,64 @@ class SupabaseDatabase:
 
             return result
 
+        # Country distribution query (with percentage calculation)
+        elif 'group by country' in query_lower:
+            groups = defaultdict(int)
+            total = len(data)
+
+            for row in data:
+                key = row.get('country')
+                if key is not None:
+                    groups[key] += 1
+
+            result = []
+            for country, count in groups.items():
+                result.append({
+                    'country': country,
+                    'record_count': count,
+                    'percentage': round(100.0 * count / total, 2) if total > 0 else 0
+                })
+
+            # Sort by record_count DESC
+            result.sort(key=lambda x: x['record_count'], reverse=True)
+
+            # Apply LIMIT if in query
+            import re
+            limit_match = re.search(r'limit (\d+)', query_lower)
+            if limit_match:
+                limit = int(limit_match.group(1))
+                result = result[:limit]
+
+            return result
+
+        # Track distribution query
+        elif 'group by track' in query_lower:
+            groups = defaultdict(int)
+
+            for row in data:
+                key = row.get('track')
+                if key is not None:
+                    groups[key] += 1
+
+            result = []
+            for track, count in groups.items():
+                result.append({
+                    'track': track,
+                    'record_count': count
+                })
+
+            # Sort by record_count DESC
+            result.sort(key=lambda x: x['record_count'], reverse=True)
+
+            # Apply LIMIT if in query
+            import re
+            limit_match = re.search(r'limit (\d+)', query_lower)
+            if limit_match:
+                limit = int(limit_match.group(1))
+                result = result[:limit]
+
+            return result
+
         # Market status query
         elif 'group by market_status' in query_lower:
             groups = defaultdict(int)
@@ -313,19 +398,47 @@ class SupabaseDatabase:
             result.sort(key=lambda x: x['record_count'], reverse=True)
             return result
 
-        # Data quality query (COUNT(*) FILTER)
+        # Data quality query (COUNT(*) FILTER) - supports both live and historical tables
         elif 'filter' in query_lower:
             result = {
-                'null_race_id': sum(1 for row in data if row.get('race_id') is None),
-                'null_horse_id': sum(1 for row in data if row.get('horse_id') is None),
-                'null_bookmaker_id': sum(1 for row in data if row.get('bookmaker_id') is None),
-                'null_race_date': sum(1 for row in data if row.get('race_date') is None),
-                'null_course': sum(1 for row in data if row.get('course') is None),
-                'null_horse_name': sum(1 for row in data if row.get('horse_name') is None),
-                'null_odds_decimal': sum(1 for row in data if row.get('odds_decimal') is None),
-                'null_odds_timestamp': sum(1 for row in data if row.get('odds_timestamp') is None),
                 'total_records': len(data)
             }
+
+            # Live odds table columns
+            if any(col in query_lower for col in ['null_race_id', 'null_horse_id', 'null_bookmaker_id', 'null_odds_decimal']):
+                result.update({
+                    'null_race_id': sum(1 for row in data if row.get('race_id') is None),
+                    'null_horse_id': sum(1 for row in data if row.get('horse_id') is None),
+                    'null_bookmaker_id': sum(1 for row in data if row.get('bookmaker_id') is None),
+                    'null_race_date': sum(1 for row in data if row.get('race_date') is None),
+                    'null_course': sum(1 for row in data if row.get('course') is None),
+                    'null_horse_name': sum(1 for row in data if row.get('horse_name') is None),
+                    'null_odds_decimal': sum(1 for row in data if row.get('odds_decimal') is None),
+                    'null_odds_timestamp': sum(1 for row in data if row.get('odds_timestamp') is None),
+                })
+
+            # Historical odds table columns
+            if any(col in query_lower for col in ['null_date_of_race', 'null_track', 'null_industry_sp', 'null_finishing_position']):
+                result.update({
+                    'null_date_of_race': sum(1 for row in data if row.get('date_of_race') is None),
+                    'null_track': sum(1 for row in data if row.get('track') is None),
+                    'null_horse_name': sum(1 for row in data if row.get('horse_name') is None),
+                    'null_industry_sp': sum(1 for row in data if row.get('industry_sp') is None),
+                    'null_finishing_position': sum(1 for row in data if row.get('finishing_position') is None),
+                    'null_jockey': sum(1 for row in data if row.get('jockey') is None),
+                    'null_trainer': sum(1 for row in data if row.get('trainer') is None),
+                    'null_country': sum(1 for row in data if row.get('country') is None),
+                })
+
+            # Odds coverage metrics (historical)
+            if any(col in query_lower for col in ['has_industry_sp', 'has_pre_race_min', 'has_forecasted_odds']):
+                result.update({
+                    'has_industry_sp': sum(1 for row in data if row.get('industry_sp') is not None),
+                    'has_pre_race_min': sum(1 for row in data if row.get('pre_race_min') is not None),
+                    'has_pre_race_max': sum(1 for row in data if row.get('pre_race_max') is not None),
+                    'has_forecasted_odds': sum(1 for row in data if row.get('forecasted_odds') is not None),
+                })
+
             return [result]
 
         else:
