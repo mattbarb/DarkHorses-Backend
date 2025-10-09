@@ -121,14 +121,29 @@ class ConsolidatedScheduler:
             self._save_status()
 
     def run_statistics_update(self):
-        """Run statistics update for all tables"""
+        """Run statistics update for all tables with 60-second timeout"""
         self.status["statistics"]["last_run"] = datetime.now().isoformat()
         self.status["statistics"]["status"] = "running"
         self._save_status()
 
         try:
             logger.info("📊 Updating statistics...")
-            result = update_all_statistics(save_to_file=True)
+
+            # Add timeout protection to prevent blocking scheduler
+            import signal
+
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Statistics update exceeded 60-second timeout")
+
+            # Set 60-second timeout (Unix systems only)
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(60)
+
+            try:
+                result = update_all_statistics(save_to_file=True)
+            finally:
+                # Always cancel the alarm
+                signal.alarm(0)
 
             if result:
                 logger.info(f"✅ Statistics updated successfully - {len(result)} keys returned")
@@ -138,6 +153,14 @@ class ConsolidatedScheduler:
             self.status["statistics"]["last_success"] = datetime.now().isoformat()
             self.status["statistics"]["status"] = "success"
             self._save_status()
+
+        except TimeoutError as e:
+            logger.error(f"⏱️ Statistics update timed out: {e}")
+            logger.error("⚠️  Database queries took longer than 60 seconds")
+            self.status["statistics"]["status"] = "timeout"
+            self.status["statistics"]["error"] = str(e)
+            self._save_status()
+
         except Exception as e:
             logger.error(f"❌ Statistics update failed: {e}")
             import traceback
@@ -153,12 +176,9 @@ class ConsolidatedScheduler:
         schedule.every().day.at("01:00").do(self.run_historical_odds)
         logger.info("📅 Scheduled: Historical odds daily at 1:00 AM")
 
-        # Statistics - every 10 minutes
-        # TEMPORARILY DISABLED: Statistics worker hangs on database queries, blocking entire scheduler
-        # This caused live odds to freeze at 09:58:14
-        # TODO: Re-enable with timeout protection (see issue #TBD)
-        # schedule.every(10).minutes.do(self.run_statistics_update)
-        logger.info("⚠️  Statistics update TEMPORARILY DISABLED (prevents scheduler blocking)")
+        # Statistics - every 10 minutes (with 60-second timeout protection)
+        schedule.every(10).minutes.do(self.run_statistics_update)
+        logger.info("📅 Scheduled: Statistics update every 10 minutes (60s timeout)")
 
         # Note: Live odds uses adaptive scheduling in run() method
         logger.info("📅 Scheduled: Live odds with adaptive intervals")
