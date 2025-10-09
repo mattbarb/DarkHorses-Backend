@@ -5,6 +5,9 @@ psycopg2-binary==2.9.9
 pydantic==2.9.2
 schedule==1.2.0
 
+# Cache (for invalidation)
+upstash-redis==0.15.0
+
 # HTTP client (for Racing API)
 requests>=2.31.0
 

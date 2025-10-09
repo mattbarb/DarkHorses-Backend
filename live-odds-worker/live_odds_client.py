@@ -4,6 +4,7 @@ Handles real-time updates to ra_odds_live table with efficient upserts
 """
 
 import os
+import sys
 import json
 import logging
 from datetime import datetime, timedelta
@@ -11,7 +12,20 @@ from typing import Dict, List, Optional
 from supabase import create_client, Client
 import time
 
+# Add parent directory to path for redis_cache import
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+
 logger = logging.getLogger(__name__)
+
+# Import Redis cache for invalidation (optional - won't break if not available)
+try:
+    from redis_cache import invalidate_races_cache
+    CACHE_INVALIDATION_AVAILABLE = True
+except ImportError:
+    logger.debug("Redis cache invalidation not available")
+    CACHE_INVALIDATION_AVAILABLE = False
+    def invalidate_races_cache():
+        return False
 
 
 class LiveOddsSupabaseClient:
@@ -250,6 +264,10 @@ class LiveOddsSupabaseClient:
 
         # Log compact summary with skipped count
         logger.info(f"✅ Cycle complete: {self.stats['updated']} updated | {self.stats['skipped']} skipped | {len(self.stats['races'])} races | {len(self.stats['horses'])} horses | {len(self.stats['bookmakers'])} bookmakers | {self.stats['errors']} errors")
+
+        # Invalidate API cache if we actually updated records
+        if self.stats['updated'] > 0 and CACHE_INVALIDATION_AVAILABLE:
+            invalidate_races_cache()
 
         # Return stats with counts including skipped
         return {
