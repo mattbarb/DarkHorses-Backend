@@ -368,7 +368,8 @@ class LiveOddsSupabaseClient:
 
                 # Timestamps
                 'odds_timestamp': odds_timestamp,
-                'updated_at': datetime.now().isoformat()
+                'updated_at': datetime.now().isoformat(),
+                'fetched_at': datetime.now().isoformat()  # Always update fetched_at to show last check time
             }
 
             # Validate required fields (matching NOT NULL constraints in schema)
