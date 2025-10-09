@@ -154,8 +154,11 @@ class ConsolidatedScheduler:
         logger.info("📅 Scheduled: Historical odds daily at 1:00 AM")
 
         # Statistics - every 10 minutes
-        schedule.every(10).minutes.do(self.run_statistics_update)
-        logger.info("📅 Scheduled: Statistics update every 10 minutes")
+        # TEMPORARILY DISABLED: Statistics worker hangs on database queries, blocking entire scheduler
+        # This caused live odds to freeze at 09:58:14
+        # TODO: Re-enable with timeout protection (see issue #TBD)
+        # schedule.every(10).minutes.do(self.run_statistics_update)
+        logger.info("⚠️  Statistics update TEMPORARILY DISABLED (prevents scheduler blocking)")
 
         # Note: Live odds uses adaptive scheduling in run() method
         logger.info("📅 Scheduled: Live odds with adaptive intervals")
