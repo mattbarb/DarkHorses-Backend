@@ -130,6 +130,25 @@ class LiveOddsSupabaseClient:
         """
         logger.info(f"📥 RECEIVED {len(odds_data)} odds records to update")
 
+        # EMERGENCY BYPASS: Disable change detection if causing database locks
+        disable_change_detection = os.getenv('DISABLE_CHANGE_DETECTION', 'false').lower() == 'true'
+        if disable_change_detection:
+            logger.warning("⚠️ CHANGE DETECTION DISABLED - Upserting all records")
+            try:
+                response = self.client.table('ra_odds_live').upsert(
+                    odds_data,
+                    on_conflict='race_id,horse_id,bookmaker_id'
+                ).execute()
+                logger.info(f"✅ Upserted {len(odds_data)} records (change detection disabled)")
+                return {
+                    "inserted": 0,
+                    "updated": len(odds_data),
+                    "skipped": 0
+                }
+            except Exception as e:
+                logger.error(f"❌ Error upserting odds: {e}")
+                raise
+
         # Log sample of first record
         if odds_data:
             sample = odds_data[0]
