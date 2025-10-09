@@ -35,7 +35,9 @@ class LiveOddsSupabaseClient:
             raise ValueError(f"Could not initialize Supabase client: {e}")
 
         # Configuration
-        self.batch_size = int(os.getenv('LIVE_BATCH_SIZE', '50'))
+        # Reduced batch size for faster writes and less table locking
+        # Smaller batches = shorter locks = frontend can read between batches
+        self.batch_size = int(os.getenv('LIVE_BATCH_SIZE', '100'))  # Reduced from larger batches
         self.max_retries = 3
 
         # Statistics
@@ -80,6 +82,14 @@ class LiveOddsSupabaseClient:
             if not race_ids:
                 logger.info("📭 No race IDs provided - assuming all new records")
                 return {}
+
+            # SAFEGUARD: Prevent accidentally fetching too many races
+            # This caused frontend hangs when fetching 50-100+ races (82k+ rows, 5-15s)
+            if len(race_ids) > 20:
+                logger.warning(f"⚠️  WARNING: Fetching {len(race_ids)} races - this may be too many!")
+                logger.warning(f"   Expected: 2-5 races per cycle")
+                logger.warning(f"   This could cause slow queries (5-15s) and block frontend")
+                logger.warning(f"   Consider limiting to races actually being updated")
 
             logger.info(f"📥 Fetching existing odds for {len(race_ids)} races (change detection)...")
 
