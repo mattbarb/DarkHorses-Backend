@@ -384,11 +384,11 @@ class LiveOddsScheduler:
             logger.info(f"=" * 80)
             logger.info(f"")
 
-            # Store all odds in database in one batch
+            # Store all odds in database in one batch with change detection
             if all_odds_records:
                 logger.info(f"")
                 logger.info(f"=" * 80)
-                logger.info(f"📊 STAGE 2: INSERTING TO SUPABASE")
+                logger.info(f"📊 STAGE 2: INSERTING TO SUPABASE (WITH CHANGE DETECTION)")
                 logger.info(f"=" * 80)
                 logger.info(f"💾 Sending {len(all_odds_records)} records to ra_odds_live table...")
                 logger.info(f"   Sample record:")
@@ -400,15 +400,23 @@ class LiveOddsScheduler:
                 logger.info(f"")
 
                 try:
-                    db_stats = self.client.update_live_odds(all_odds_records)
+                    # Extract race IDs for bulk fetch
+                    race_ids_list = [race.get('race_id') for race in races if race.get('race_id')]
+                    logger.info(f"🔍 Change detection: comparing against {len(race_ids_list)} races in database...")
+
+                    # Call with race_ids for efficient change detection
+                    db_stats = self.client.update_live_odds(all_odds_records, race_ids=race_ids_list)
                     logger.info(f"")
                     logger.info(f"=" * 80)
-                    logger.info(f"✅ STAGE 2 COMPLETE - DATABASE INSERT SUCCESSFUL")
-                    logger.info(f"   Records inserted/updated: {db_stats.get('updated', 0)}")
+                    logger.info(f"✅ STAGE 2 COMPLETE - DATABASE UPDATE WITH CHANGE DETECTION")
+                    logger.info(f"   Records inserted: {db_stats.get('inserted', 0)} (new)")
+                    logger.info(f"   Records updated: {db_stats.get('updated', 0)} (odds changed)")
+                    logger.info(f"   Records skipped: {db_stats.get('skipped', 0)} (odds unchanged)")
                     logger.info(f"   Unique races: {db_stats.get('races', 'N/A')}")
                     logger.info(f"   Unique horses: {db_stats.get('horses', 'N/A')}")
                     logger.info(f"   Unique bookmakers: {db_stats.get('bookmakers', 'N/A')}")
                     logger.info(f"   Errors: {db_stats.get('errors', 0)}")
+                    logger.info(f"   💰 Database cost savings: {db_stats.get('skipped', 0)} unnecessary writes avoided")
                     logger.info(f"=" * 80)
                     logger.info(f"")
 

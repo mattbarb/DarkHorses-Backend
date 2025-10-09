@@ -66,8 +66,58 @@ class LiveOddsSupabaseClient:
             logger.error(f"   Service key configured: {'Yes' if os.getenv('SUPABASE_SERVICE_KEY') else 'No'}")
             raise RuntimeError(f"Cannot connect to Supabase database: {e}")
 
-    def update_live_odds(self, odds_data: List[Dict]) -> Dict:
-        """Update live odds with efficient batching and upserts"""
+    def fetch_existing_odds_for_races(self, race_ids: List[str]) -> Dict[tuple, float]:
+        """
+        Fetch existing odds for given races to enable change detection.
+
+        Args:
+            race_ids: List of race IDs to fetch existing odds for
+
+        Returns:
+            Dict mapping (race_id, horse_id, bookmaker_id) -> odds_decimal
+        """
+        try:
+            if not race_ids:
+                logger.info("📭 No race IDs provided - assuming all new records")
+                return {}
+
+            logger.info(f"📥 Fetching existing odds for {len(race_ids)} races (change detection)...")
+
+            # Query Supabase for all odds in these races
+            response = self.client.table('ra_odds_live') \
+                .select('race_id,horse_id,bookmaker_id,odds_decimal') \
+                .in_('race_id', race_ids) \
+                .execute()
+
+            if not response.data:
+                logger.info("📭 No existing odds found (all records are new)")
+                return {}
+
+            # Build lookup map
+            odds_map = {}
+            for row in response.data:
+                key = (row['race_id'], row['horse_id'], row['bookmaker_id'])
+                odds_map[key] = row['odds_decimal']
+
+            logger.info(f"✅ Loaded {len(odds_map)} existing odds records for comparison")
+            return odds_map
+
+        except Exception as e:
+            logger.error(f"❌ Error fetching existing odds: {e}")
+            # Return empty map - fall back to upserting all (safe default)
+            return {}
+
+    def update_live_odds(self, odds_data: List[Dict], race_ids: List[str] = None) -> Dict:
+        """
+        Update live odds with change detection - ONLY writes when odds actually change.
+
+        Args:
+            odds_data: List of odds records to update
+            race_ids: Optional list of race IDs for bulk existing odds fetch
+
+        Returns:
+            Dict with upsert statistics including 'skipped' count
+        """
         logger.info(f"📥 RECEIVED {len(odds_data)} odds records to update")
 
         # Log sample of first record
@@ -81,15 +131,79 @@ class LiveOddsSupabaseClient:
         self.stats = {
             'inserted': 0,
             'updated': 0,
+            'skipped': 0,
             'errors': 0,
             'bookmakers': set(),
             'races': set(),
             'horses': set()
         }
 
+        # STEP 1: Fetch existing odds for change detection
+        if race_ids is None:
+            # Extract race IDs from odds data
+            race_ids = list(set(record.get('race_id') for record in odds_data if record.get('race_id')))
+            logger.info(f"   Extracted {len(race_ids)} unique race IDs from odds data")
+
+        existing_odds_map = self.fetch_existing_odds_for_races(race_ids)
+
+        # STEP 2: Filter to only changed/new odds
+        odds_to_upsert = []
+        skipped_count = 0
+
+        for record in odds_data:
+            race_id = record.get('race_id')
+            horse_id = record.get('horse_id')
+            bookmaker_id = record.get('bookmaker_id')
+            new_odds_decimal = record.get('odds_decimal')
+
+            if not race_id or not horse_id or not bookmaker_id:
+                logger.warning(f"⚠️  Record missing required ID fields: {record.get('horse_name', 'unknown')}")
+                continue
+
+            key = (race_id, horse_id, bookmaker_id)
+            existing_decimal = existing_odds_map.get(key)
+
+            # Check if odds changed (or is a new record)
+            if existing_decimal is not None:
+                # Record exists - compare odds
+                try:
+                    # Convert to float for comparison (handle None)
+                    existing_float = float(existing_decimal) if existing_decimal is not None else None
+                    new_float = float(new_odds_decimal) if new_odds_decimal is not None else None
+
+                    if existing_float == new_float:
+                        # Odds unchanged - skip
+                        skipped_count += 1
+                        continue
+                except (ValueError, TypeError):
+                    # If conversion fails, assume changed and upsert
+                    pass
+
+            # Odds changed or new record - add to upsert batch
+            odds_to_upsert.append(record)
+
+        # Update stats with skipped count
+        self.stats['skipped'] = skipped_count
+
+        logger.info(f"📊 Change detection: {len(odds_to_upsert)} to update/insert, {skipped_count} unchanged (skipped)")
+
+        # STEP 3: Only proceed if there are changes
+        if not odds_to_upsert:
+            logger.info("✅ No odds changes detected - skipping database write (reduces cost)")
+            return {
+                'inserted': 0,
+                'updated': 0,
+                'skipped': skipped_count,
+                'errors': 0,
+                'bookmakers': 0,
+                'races': 0,
+                'horses': 0
+            }
+
+        # STEP 4: Process only changed odds (original logic)
         # Group by bookmaker for efficient updates
         bookmaker_groups = {}
-        for record in odds_data:
+        for record in odds_to_upsert:
             bookmaker_id = record.get('bookmaker_id')
             if bookmaker_id:
                 if bookmaker_id not in bookmaker_groups:
@@ -98,28 +212,36 @@ class LiveOddsSupabaseClient:
             else:
                 logger.warning(f"⚠️  Record missing bookmaker_id: {record.get('horse_name', 'unknown')}")
 
-        logger.info(f"📦 Grouped into {len(bookmaker_groups)} bookmakers: {list(bookmaker_groups.keys())}")
+        logger.info(f"📦 Grouped {len(odds_to_upsert)} changed records into {len(bookmaker_groups)} bookmakers: {list(bookmaker_groups.keys())}")
 
         # Process each bookmaker's odds
         for bookmaker_id, records in bookmaker_groups.items():
             logger.debug(f"Processing {len(records)} records for bookmaker: {bookmaker_id}")
-            self._process_bookmaker_batch(bookmaker_id, records)
+            self._process_bookmaker_batch(bookmaker_id, records, existing_odds_map)
 
-        # Log compact summary
-        logger.info(f"✅ Cycle complete: {self.stats['updated']} records | {len(self.stats['races'])} races | {len(self.stats['horses'])} horses | {len(self.stats['bookmakers'])} bookmakers | {self.stats['errors']} errors")
+        # Log compact summary with skipped count
+        logger.info(f"✅ Cycle complete: {self.stats['updated']} updated | {self.stats['skipped']} skipped | {len(self.stats['races'])} races | {len(self.stats['horses'])} horses | {len(self.stats['bookmakers'])} bookmakers | {self.stats['errors']} errors")
 
-        # Return stats with counts
+        # Return stats with counts including skipped
         return {
             'inserted': self.stats['inserted'],
             'updated': self.stats['updated'],
+            'skipped': self.stats['skipped'],
             'errors': self.stats['errors'],
             'bookmakers': len(self.stats['bookmakers']),
             'races': len(self.stats['races']),
             'horses': len(self.stats['horses'])
         }
 
-    def _process_bookmaker_batch(self, bookmaker_id: str, records: List[Dict]):
-        """Process odds for a specific bookmaker"""
+    def _process_bookmaker_batch(self, bookmaker_id: str, records: List[Dict], existing_odds_map: Dict[tuple, float] = None):
+        """
+        Process odds for a specific bookmaker
+
+        Args:
+            bookmaker_id: ID of the bookmaker
+            records: List of odds records for this bookmaker
+            existing_odds_map: Optional map of existing odds (for determining insert vs update)
+        """
         # Process in batches
         for i in range(0, len(records), self.batch_size):
             batch = records[i:i+self.batch_size]
@@ -135,8 +257,16 @@ class LiveOddsSupabaseClient:
                         self.stats['races'].add(record.get('race_id'))
                         self.stats['horses'].add(record.get('horse_id'))
 
+                        # Track if this is an insert or update
+                        if existing_odds_map is not None:
+                            key = (record.get('race_id'), record.get('horse_id'), bookmaker_id)
+                            if key in existing_odds_map:
+                                self.stats['updated'] += 1
+                            else:
+                                self.stats['inserted'] += 1
+
                 if prepared_records:
-                    self._upsert_batch(prepared_records)
+                    self._upsert_batch(prepared_records, count_in_stats=False)  # Don't double-count
 
             except Exception as e:
                 logger.error(f"Error processing batch for {bookmaker_id}: {e}")
@@ -236,11 +366,18 @@ class LiveOddsSupabaseClient:
             logger.error(f"Error preparing live record: {e}")
             return None
 
-    def _upsert_batch(self, records: List[Dict]):
-        """Upsert a batch of records to ra_odds_live"""
+    def _upsert_batch(self, records: List[Dict], count_in_stats: bool = True):
+        """
+        Upsert a batch of records to ra_odds_live
+
+        Args:
+            records: List of prepared records to upsert
+            count_in_stats: If False, don't add to updated count (already counted elsewhere)
+        """
         try:
             # Log sample for first batch only (debugging)
-            if self.stats['updated'] == 0 and records:
+            total_processed = self.stats['updated'] + self.stats['inserted']
+            if total_processed == 0 and records:
                 sample = records[0]
                 logger.info(f"💾 First batch sample: {sample.get('horse_name')} @ {sample.get('course')} - {sample.get('bookmaker_name')} - {sample.get('odds_decimal')}")
 
@@ -252,10 +389,12 @@ class LiveOddsSupabaseClient:
 
             if response.data:
                 count = len(response.data)
-                self.stats['updated'] += count
+                if count_in_stats:
+                    self.stats['updated'] += count
                 # Only log every 500 records to reduce noise
-                if self.stats['updated'] % 500 < count:
-                    logger.info(f"✅ Upserted {self.stats['updated']} records so far...")
+                total_after = self.stats['updated'] + self.stats['inserted']
+                if total_after % 500 < count or total_after < 100:
+                    logger.info(f"✅ Processed {total_after} records so far ({self.stats['inserted']} new, {self.stats['updated']} updated)...")
             else:
                 logger.warning(f"⚠️  Upsert returned no data for {len(records)} records")
                 logger.warning(f"   This could mean:")
@@ -276,7 +415,8 @@ class LiveOddsSupabaseClient:
                 response = self.client.table('ra_odds_live').upsert(records).execute()
                 if response.data:
                     count = len(response.data)
-                    self.stats['updated'] += count
+                    if count_in_stats:
+                        self.stats['updated'] += count
                     logger.info(f"✅ Retry successful: {count} records upserted")
                     return
             except Exception as retry_error:
