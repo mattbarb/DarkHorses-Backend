@@ -379,6 +379,7 @@ class SchemaMapper:
                 'race_time': combined_data.get('off_time'),
 
                 # Race details
+                'race_name': combined_data.get('race_name'),
                 'going': combined_data.get('going'),
                 'race_type': combined_data.get('race_type'),
                 'distance': combined_data.get('distance'),
